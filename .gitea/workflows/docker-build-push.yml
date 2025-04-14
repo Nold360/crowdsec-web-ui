@@ -28,16 +28,7 @@ jobs:
       - name: Docker-Images für mehrere Architekturen bauen und pushen
         uses: docker/build-push-action@v5
         with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/TheDuffman85/crowdsec-web-ui:latest-amd64
-            ghcr.io/TheDuffman85/crowdsec-web-ui:latest-arm64
-
-      - name: Docker Manifest erstellen und pushen
-        run: |
-          docker manifest create ghcr.io/TheDuffman85/crowdsec-web-ui:latest \
-            ghcr.io/TheDuffman85/crowdsec-web-ui:latest-amd64 \
-            ghcr.io/TheDuffman85/crowdsec-web-ui:latest-arm64
-          docker manifest push ghcr.io/TheDuffman85/crowdsec-web-ui:latest
+           context: .
+           push: true
+           platforms: linux/amd64,linux/arm64
+           tags: ghcr.io/TheDuffman85/crowdsec-web-ui:latest
