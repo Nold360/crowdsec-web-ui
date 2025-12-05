@@ -155,22 +155,33 @@ app.get('/api/alerts/:id', ensureAuth, async (req, res) => {
 
 /**
  * GET /api/decisions
+ * Retrieves active decisions.
+ * Since Machines (Watchers) cannot access GET /v1/decisions, we fetch alerts with active decisions.
  */
 app.get('/api/decisions', ensureAuth, async (req, res) => {
   const doRequest = async () => {
-    const response = await apiClient.get('/v1/decisions?stream=false');
-    const decisions = response.data || [];
+    // Fetch alerts that have active decisions
+    const response = await apiClient.get('/v1/alerts?has_active_decision=true');
+    const alerts = response.data || [];
 
-    const mappedDecisions = decisions.map(d => ({
-      id: d.id,
-      created_at: d.created_at || new Date().toISOString(), // Decisions usually have created_at?
-      scenario: d.scenario || (d.origin || "N/A"),
-      value: d.value,
-      detail: d
-    }));
+    let combinedDecisions = [];
 
-    mappedDecisions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    res.json(mappedDecisions);
+    // Extract decisions from each alert
+    alerts.forEach(alert => {
+      if (Array.isArray(alert.decisions)) {
+        const mapped = alert.decisions.map(decision => ({
+          id: decision.id,
+          created_at: decision.created_at || alert.created_at, // Use decision time or alert time
+          scenario: decision.scenario || alert.scenario || "N/A",
+          value: decision.value,
+          detail: alert // Pass the full alert as detail, similar to previous implementation
+        }));
+        combinedDecisions = combinedDecisions.concat(mapped);
+      }
+    });
+
+    combinedDecisions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(combinedDecisions);
   };
 
   try {
