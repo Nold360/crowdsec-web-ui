@@ -87,16 +87,121 @@ export function Alerts() {
 
             {selectedAlert && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedAlert(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-start mb-4">
-                            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Alert Details #{selectedAlert.id}</h3>
-                            <button onClick={() => setSelectedAlert(null)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
+
+                        {/* Header */}
+                        <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700">
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    Alert Details <span className="text-gray-400">#{selectedAlert.id}</span>
+                                </h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                    Captured at {new Date(selectedAlert.created_at).toLocaleString()}
+                                </p>
+                            </div>
+                            <button onClick={() => setSelectedAlert(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-500 dark:text-gray-400">
                                 ✕
                             </button>
                         </div>
-                        <pre className="bg-gray-100 dark:bg-gray-900 p-4 rounded-md overflow-x-auto text-sm text-gray-800 dark:text-gray-200">
-                            {JSON.stringify(selectedAlert, null, 2)}
-                        </pre>
+
+                        {/* Content */}
+                        <div className="p-6 space-y-6">
+
+                            {/* Summary Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-100 dark:border-gray-700/50">
+                                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Scenario</h4>
+                                    <div className="font-medium text-gray-900 dark:text-gray-100 break-words">
+                                        <Badge variant="warning">{selectedAlert.scenario}</Badge>
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-100 dark:border-gray-700/50">
+                                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Attacker IP</h4>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-mono text-lg font-bold text-gray-900 dark:text-white">
+                                            {selectedAlert.source?.ip || selectedAlert.source?.value || "N/A"}
+                                        </span>
+                                    </div>
+                                    <div className="text-sm text-gray-500 mt-1">
+                                        {selectedAlert.source?.as_name} ({selectedAlert.source?.as_number})
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-100 dark:border-gray-700/50">
+                                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Location</h4>
+                                    <div className="text-lg text-gray-900 dark:text-gray-100 font-medium">
+                                        {selectedAlert.source?.cn}
+                                    </div>
+                                    <div className="text-xs text-gray-400 font-mono mt-1">
+                                        Lat: {selectedAlert.source?.latitude}, Long: {selectedAlert.source?.longitude}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Decisions */}
+                            {selectedAlert.decisions && selectedAlert.decisions.length > 0 && (
+                                <div>
+                                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Decisions Taken</h4>
+                                    <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                            <thead className="bg-gray-50 dark:bg-gray-900">
+                                                <tr>
+                                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Value</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Origin</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
+                                                {selectedAlert.decisions.map((decision, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="px-4 py-2 text-sm"><Badge variant="danger">{decision.type}</Badge></td>
+                                                        <td className="px-4 py-2 text-sm font-mono">{decision.value}</td>
+                                                        <td className="px-4 py-2 text-sm">{decision.duration}</td>
+                                                        <td className="px-4 py-2 text-sm">{decision.origin}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Events Breakdown */}
+                            <div>
+                                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+                                    Events ({selectedAlert.events_count})
+                                </h4>
+                                <div className="space-y-2">
+                                    {selectedAlert.events?.slice(0, 10).map((event, idx) => {
+                                        // Helper to extract meta value
+                                        const getMeta = (key) => event.meta?.find(m => m.key === key)?.value || "-";
+
+                                        return (
+                                            <div key={idx} className="p-3 bg-gray-50 dark:bg-gray-900/30 rounded border border-gray-100 dark:border-gray-800 text-sm">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                    <div>
+                                                        <span className="text-gray-500">Timestamp:</span> <span className="font-mono text-xs">{event.timestamp}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-500">Service:</span> {getMeta('service')}
+                                                    </div>
+                                                    <div className="col-span-1 md:col-span-2 font-mono text-xs break-all bg-white dark:bg-gray-950 p-2 rounded border border-gray-200 dark:border-gray-800 mt-1">
+                                                        <span className="text-blue-600 dark:text-blue-400 font-bold">{getMeta('http_verb')}</span> {getMeta('http_path') || getMeta('target_fqdn')}
+                                                        <div className="text-gray-400 mt-1">Status: {getMeta('http_status')} | UA: {getMeta('http_user_agent')}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {selectedAlert.events?.length > 10 && (
+                                        <div className="text-center text-sm text-gray-500">
+                                            + {selectedAlert.events.length - 10} more events
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
                 </div>
             )}

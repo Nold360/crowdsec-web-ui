@@ -1,11 +1,26 @@
 import { useEffect, useState } from "react";
-import { fetchDecisions, deleteDecision } from "../lib/api";
+import { fetchDecisions, deleteDecision, addDecision } from "../lib/api";
 import { Badge } from "../components/ui/Badge";
-import { Trash2 } from "lucide-react";
+import { Trash2, Gavel } from "lucide-react";
 
 export function Decisions() {
     const [decisions, setDecisions] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [newDecision, setNewDecision] = useState({ ip: "", duration: "4h", reason: "manual" });
+
+    const handleAddDecision = async (e) => {
+        e.preventDefault();
+        try {
+            await addDecision(newDecision);
+            setShowAddModal(false);
+            setNewDecision({ ip: "", duration: "4h", reason: "manual" });
+            loadDecisions();
+        } catch (error) {
+            console.error("Failed to add decision", error);
+            alert("Failed to add decision");
+        }
+    };
 
     const loadDecisions = () => {
         setLoading(true);
@@ -34,6 +49,13 @@ export function Decisions() {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Decisions</h2>
+                <button
+                    onClick={() => setShowAddModal(true)}
+                    className="bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-md transition-colors flex items-center gap-2 text-sm"
+                >
+                    <Gavel size={16} />
+                    Add Decision
+                </button>
             </div>
 
             <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
@@ -88,6 +110,63 @@ export function Decisions() {
                     </table>
                 </div>
             </div>
+
+            {showAddModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddModal(false)}>
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Add Manual Decision</h3>
+                        <form onSubmit={handleAddDecision} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">IP Address</label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                                    placeholder="1.2.3.4"
+                                    value={newDecision.ip}
+                                    onChange={e => setNewDecision({ ...newDecision, ip: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Duration</label>
+                                <input
+                                    type="text"
+                                    className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                                    placeholder="4h"
+                                    value={newDecision.duration}
+                                    onChange={e => setNewDecision({ ...newDecision, duration: e.target.value })}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">e.g. 4h, 1d, 30m</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reason</label>
+                                <input
+                                    type="text"
+                                    className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                                    placeholder="Manual ban"
+                                    value={newDecision.reason}
+                                    onChange={e => setNewDecision({ ...newDecision, reason: e.target.value })}
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3 mt-6">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAddModal(false)}
+                                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white dark:bg-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                                >
+                                    Add Decision
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

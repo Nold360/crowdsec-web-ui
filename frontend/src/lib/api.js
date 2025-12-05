@@ -15,3 +15,13 @@ export async function deleteDecision(id) {
     if (!res.ok) throw new Error('Failed to delete decision');
     return res.json();
 }
+
+export async function addDecision(data) {
+    const res = await fetch('/api/decisions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to add decision');
+    return res.json();
+}

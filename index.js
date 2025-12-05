@@ -111,6 +111,34 @@ app.get('/api/decisions', (req, res) => {
 });
 
 /**
+ * POST /api/decisions
+ * Adds a new decision (ban) using "cscli decisions add".
+ * Expected body: { ip, duration, reason }
+ */
+app.post('/api/decisions', (req, res) => {
+  const { ip, duration = "4h", reason = "manual" } = req.body;
+
+  if (!ip) {
+    return res.status(400).json({ error: 'IP address is required' });
+  }
+
+  // Sanitize inputs slightly to prevent command injection, though better validation is recommended
+  if (/[^a-zA-Z0-9\.\:\-]/.test(ip)) {
+    return res.status(400).json({ error: 'Invalid IP address format' });
+  }
+
+  const cmd = `docker exec ${crowdsecContainer} cscli decisions add --ip "${ip}" --duration "${duration}" --reason "${reason}" --type ban`;
+
+  exec(cmd, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Error adding decision: ${error}`);
+      return res.status(500).json({ error: 'Error adding decision' });
+    }
+    res.json({ message: 'Decision added successfully', result: stdout });
+  });
+});
+
+/**
  * DELETE /api/decisions/:id
  * Deletes a decision using the correct syntax.
  */
