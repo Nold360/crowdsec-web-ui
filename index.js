@@ -124,7 +124,8 @@ const handleApiError = async (error, res, action, replayCallback) => {
  */
 app.get('/api/alerts', ensureAuth, async (req, res) => {
   const doRequest = async () => {
-    const response = await apiClient.get('/v1/alerts');
+    // Limit to 100 most recent alerts to prevent OOM on large datasets
+    const response = await apiClient.get('/v1/alerts?limit=100');
     const alertArray = response.data || [];
     alertArray.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     res.json(alertArray);
@@ -161,7 +162,8 @@ app.get('/api/alerts/:id', ensureAuth, async (req, res) => {
 app.get('/api/decisions', ensureAuth, async (req, res) => {
   const doRequest = async () => {
     // Fetch alerts that have active decisions
-    const response = await apiClient.get('/v1/alerts?has_active_decision=true');
+    // Limit to 100 to prevent OOM. In a real app, pagination should be implemented.
+    const response = await apiClient.get('/v1/alerts?has_active_decision=true&limit=100');
     const alerts = response.data || [];
 
     let combinedDecisions = [];
