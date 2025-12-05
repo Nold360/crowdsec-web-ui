@@ -1,159 +1,248 @@
 // index.js
 const express = require('express');
-const { exec } = require('child_process');
+const axios = require('axios');
 const cors = require('cors');
 const path = require('path');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Use the environment variable or default to 'crowdsec_container'
-const crowdsecContainer = process.env.CROWDSEC_CONTAINER || 'crowdsec_container';
+// CrowdSec LAPI Configuration
+const CROWDSEC_URL = process.env.CROWDSEC_URL || 'http://crowdsec:8080';
+const CROWDSEC_USER = process.env.CROWDSEC_USER;
+const CROWDSEC_PASSWORD = process.env.CROWDSEC_PASSWORD;
+
+// Token state
+let requestToken = null;
+
+if (!CROWDSEC_USER || !CROWDSEC_PASSWORD) {
+  console.warn('WARNING: CROWDSEC_USER and CROWDSEC_PASSWORD must be set for full functionality.');
+}
+
+const apiClient = axios.create({
+  baseURL: CROWDSEC_URL,
+  timeout: 5000,
+  headers: {
+    'User-Agent': 'crowdsec-web-ui/1.0.0'
+  }
+});
+
+// Add interceptor to inject token
+apiClient.interceptors.request.use(config => {
+  if (requestToken && !config.url.includes('/watchers/login')) {
+    config.headers.Authorization = `Bearer ${requestToken}`;
+  }
+  return config;
+});
+
+// Login helper
+const loginToLAPI = async () => {
+  try {
+    console.log(`Attempting login to CrowdSec LAPI at ${CROWDSEC_URL} as ${CROWDSEC_USER}...`);
+    const response = await apiClient.post('/v1/watchers/login', {
+      machine_id: CROWDSEC_USER,
+      password: CROWDSEC_PASSWORD,
+      scenarios: ["manual/web-ui"] // Informative only
+    });
+
+    if (response.data && response.data.code === 200 && response.data.token) {
+      requestToken = response.data.token;
+      console.log('Successfully logged in to CrowdSec LAPI');
+      return true;
+    } else if (response.data && response.data.token) {
+      // Some versions might just return the token object directly or differently
+      requestToken = response.data.token;
+      console.log('Successfully logged in to CrowdSec LAPI');
+      return true;
+    } else {
+      console.error('Login response did not contain token:', response.data);
+      return false;
+    }
+  } catch (error) {
+    console.error(`Login failed: ${error.message}`);
+    if (error.response) {
+      console.error('Response data:', error.response.data);
+    }
+    return false;
+  }
+};
+
+// Initial login
+if (CROWDSEC_USER && CROWDSEC_PASSWORD) {
+  loginToLAPI();
+}
 
 app.use(cors());
 app.use(express.json());
 
 /**
- * GET /api/alerts
- * Executes "cscli alerts list", treats the output as an array,
- * sorts alerts descending by created_at, and returns the array.
+ * Middleware to ensure we have a token or try to get one
  */
-app.get('/api/alerts', (req, res) => {
-  exec(`docker exec ${crowdsecContainer} cscli alerts list --output json`, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Error fetching alerts: ${error}`);
-      return res.status(500).json({ error: 'Error fetching alerts' });
+const ensureAuth = async (req, res, next) => {
+  if (!requestToken) {
+    const success = await loginToLAPI();
+    if (!success) {
+      return res.status(502).json({ error: 'Failed to authenticate with CrowdSec LAPI' });
     }
-    try {
-      const alertArray = JSON.parse(stdout);
-      // Assume alertArray is an array; sort descending by created_at
-      alertArray.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      res.json(alertArray);
-    } catch (parseError) {
-      console.error('Error parsing alerts JSON:', parseError);
-      res.status(500).json({ error: 'Error parsing alerts data' });
+  }
+  next();
+};
+
+/**
+ * Helper to handle Axios errors with intelligent retry for 401
+ */
+const handleApiError = async (error, res, action, replayCallback) => {
+  if (error.response && error.response.status === 401) {
+    console.log(`Received 401 during ${action}, attempting re-login...`);
+    const success = await loginToLAPI();
+    if (success && replayCallback) {
+      try {
+        await replayCallback();
+        return; // Successful replay
+      } catch (retryError) {
+        // Replay failed, fall through to error handling
+        console.error(`Retry failed for ${action}: ${retryError.message}`);
+        error = retryError;
+      }
     }
-  });
+  }
+
+  if (error.response) {
+    console.error(`Error ${action}: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+    res.status(error.response.status).json(error.response.data);
+  } else if (error.request) {
+    console.error(`Error ${action}: No response received`);
+    res.status(502).json({ error: 'Bad Gateway: No response from CrowdSec LAPI' });
+  } else {
+    console.error(`Error ${action}: ${error.message}`);
+    res.status(500).json({ error: `Internal Server Error: ${error.message}` });
+  }
+};
+
+/**
+ * GET /api/alerts
+ */
+app.get('/api/alerts', ensureAuth, async (req, res) => {
+  const doRequest = async () => {
+    const response = await apiClient.get('/v1/alerts');
+    const alertArray = response.data || [];
+    alertArray.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(alertArray);
+  };
+
+  try {
+    await doRequest();
+  } catch (error) {
+    handleApiError(error, res, 'fetching alerts', doRequest);
+  }
 });
 
 /**
  * GET /api/alerts/:id
- * Returns details for a single alert.
  */
-app.get('/api/alerts/:id', (req, res) => {
-  const alertId = req.params.id;
-  exec(`docker exec ${crowdsecContainer} cscli alerts list --output json`, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Error fetching alerts: ${error}`);
-      return res.status(500).json({ error: 'Error fetching alerts' });
-    }
-    try {
-      const alertArray = JSON.parse(stdout);
-      const alert = alertArray.find(a => String(a.id) === alertId);
-      if (!alert) {
-        return res.status(404).json({ error: 'Alert not found' });
-      }
-      res.json(alert);
-    } catch (parseError) {
-      console.error('Error parsing alerts JSON:', parseError);
-      res.status(500).json({ error: 'Error parsing alerts data' });
-    }
-  });
+app.get('/api/alerts/:id', ensureAuth, async (req, res) => {
+  const doRequest = async () => {
+    const response = await apiClient.get(`/v1/alerts/${req.params.id}`);
+    res.json(response.data);
+  };
+
+  try {
+    await doRequest();
+  } catch (error) {
+    handleApiError(error, res, 'fetching alert details', doRequest);
+  }
 });
 
 /**
  * GET /api/decisions
- * Executes "cscli decisions list" which returns an array of parent objects.
- * Each parent object contains a "decisions" array with decision details.
- * For each decision, we map an object with:
- *  - id (from decision.id)
- *  - created_at (from decision.created_at or parent's created_at)
- *  - scenario (from decision.scenario, or "N/A" if missing)
- *  - value (from decision.value, or "N/A" if missing)
- *  - detail (the entire decision object)
- *
- * Then we combine all mapped decisions into one array, sort descending by created_at, and return it.
  */
-app.get('/api/decisions', (req, res) => {
-  exec(`docker exec ${crowdsecContainer} cscli decisions list --output json`, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Error fetching decisions: ${error}`);
-      return res.status(500).json({ error: 'Error fetching decisions' });
-    }
-    try {
-      const parentsArray = JSON.parse(stdout);
-      let combinedDecisions = [];
-      if (Array.isArray(parentsArray)) {
-        parentsArray.forEach(parent => {
-          if (Array.isArray(parent.decisions)) {
-            const mapped = parent.decisions.map(decision => ({
-              id: decision.id,
-              created_at: decision.created_at || parent.created_at || null,
-              scenario: decision.scenario || "N/A",
-              value: decision.value || "N/A",
-              detail: parent  // Entire decision object mapped to "detail"
-            }));
-            combinedDecisions = combinedDecisions.concat(mapped);
-          }
-        });
-      }
-      combinedDecisions.sort((a, b) => {
-        const aTime = a.created_at ? new Date(a.created_at) : 0;
-        const bTime = b.created_at ? new Date(b.created_at) : 0;
-        return bTime - aTime;
-      });
-      res.json(combinedDecisions);
-    } catch (parseError) {
-      console.error('Error parsing decisions JSON:', parseError);
-      res.status(500).json({ error: 'Error parsing decisions data' });
-    }
-  });
+app.get('/api/decisions', ensureAuth, async (req, res) => {
+  const doRequest = async () => {
+    const response = await apiClient.get('/v1/decisions?stream=false');
+    const decisions = response.data || [];
+
+    const mappedDecisions = decisions.map(d => ({
+      id: d.id,
+      created_at: d.created_at || new Date().toISOString(), // Decisions usually have created_at?
+      scenario: d.scenario || (d.origin || "N/A"),
+      value: d.value,
+      detail: d
+    }));
+
+    mappedDecisions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(mappedDecisions);
+  };
+
+  try {
+    await doRequest();
+  } catch (error) {
+    handleApiError(error, res, 'fetching decisions', doRequest);
+  }
 });
 
 /**
  * POST /api/decisions
- * Adds a new decision (ban) using "cscli decisions add".
- * Expected body: { ip, duration, reason }
+ * Creates a manual decision via POST /v1/alerts
  */
-app.post('/api/decisions', (req, res) => {
-  const { ip, duration = "4h", reason = "manual" } = req.body;
+app.post('/api/decisions', ensureAuth, async (req, res) => {
+  const doRequest = async () => {
+    const { ip, duration = "4h", reason = "manual", type = "ban" } = req.body;
 
-  if (!ip) {
-    return res.status(400).json({ error: 'IP address is required' });
-  }
-
-  // Sanitize inputs slightly to prevent command injection, though better validation is recommended
-  if (/[^a-zA-Z0-9\.\:\-]/.test(ip)) {
-    return res.status(400).json({ error: 'Invalid IP address format' });
-  }
-
-  const cmd = `docker exec ${crowdsecContainer} cscli decisions add --ip "${ip}" --duration "${duration}" --reason "${reason}" --type ban`;
-
-  exec(cmd, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Error adding decision: ${error}`);
-      return res.status(500).json({ error: 'Error adding decision' });
+    if (!ip) {
+      return res.status(400).json({ error: 'IP address is required' });
     }
-    res.json({ message: 'Decision added successfully', result: stdout });
-  });
+
+    // Construct Alert Object
+    const alertPayload = [{
+      scenario: "manual/web-ui",
+      message: `Manual decision from Web UI: ${reason}`,
+      events_count: 1,
+      start_at: new Date().toISOString(),
+      stop_at: new Date().toISOString(),
+      capacity: 0,
+      leakspeed: "0",
+      simulated: false,
+      source: {
+        scope: "ip",
+        value: ip
+      },
+      decisions: [{
+        type: type,
+        duration: duration,
+        value: ip,
+        origin: "manual",
+        scenario: "manual/web-ui",
+        scope: "ip"
+      }]
+    }];
+
+    const response = await apiClient.post('/v1/alerts', alertPayload);
+    res.json({ message: 'Decision added (via Alert)', result: response.data });
+  };
+
+  try {
+    await doRequest();
+  } catch (error) {
+    handleApiError(error, res, 'adding decision', doRequest);
+  }
 });
 
 /**
  * DELETE /api/decisions/:id
- * Deletes a decision using the correct syntax.
  */
-app.delete('/api/decisions/:id', (req, res) => {
-  const decisionId = req.params.id;
-  exec(`docker exec ${crowdsecContainer} cscli decisions delete --id ${decisionId}`, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Error deleting decision: ${error}`);
-      return res.status(500).json({ error: 'Error deleting decision' });
-    }
-    res.json({ message: 'Decision deleted successfully', result: stdout });
-  });
+app.delete('/api/decisions/:id', ensureAuth, async (req, res) => {
+  const doRequest = async () => {
+    const response = await apiClient.delete(`/v1/decisions/${req.params.id}`);
+    res.json(response.data || { message: 'Deleted' });
+  };
+
+  try {
+    await doRequest();
+  } catch (error) {
+    handleApiError(error, res, 'deleting decision', doRequest);
+  }
 });
 
-// Serve static files from the "public" directory.
 // Serve static files from the "frontend/dist" directory.
 app.use(express.static('frontend/dist'));
 

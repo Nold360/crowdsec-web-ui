@@ -2,12 +2,6 @@
 # Use node:20-slim (Debian) instead of Alpine to avoid QEMU emulation issues on ARM64
 FROM node:20-slim
 
-# Install the Docker CLI so docker commands can be executed
-# Debian uses apt-get. We install docker.io which contains the client.
-RUN apt-get update && \
-    apt-get install -y docker.io && \
-    rm -rf /var/lib/apt/lists/*
-
 # Set working directory
 WORKDIR /app
 
@@ -27,6 +21,9 @@ RUN npm run build-ui
 
 # Expose port 3000
 EXPOSE 3000
+
+# Security: Run as non-root user
+USER node
 
 # Run the application
 CMD ["npm", "start"]

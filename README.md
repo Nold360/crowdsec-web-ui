@@ -23,13 +23,24 @@ A modern, responsive web interface for managing [CrowdSec](https://crowdsec.net/
 ## Architecture
 
 -   **Frontend**: React (Vite) + Tailwind CSS. Located in `frontend/`.
--   **Backend**: Node.js (Express). Acts as a wrapper around the `cscli` command-line tool.
--   **Communication**: The backend executes `docker exec` commands to interact with the main CrowdSec container.
+-   **Backend**: Node.js (Express). Acts as a proxy to the CrowdSec Local API (LAPI).
+-   **Security**: The application runs as a non-root user (`node`) inside the container and communicates with CrowdSec via HTTP/LAPI. It uses **Machine Authentication** (User/Password) to obtain a JWT for full access (read/write).
 
 ## Prerequisites
 
--   **Docker**: The application runs as a container and needs access to the CrowdSec container.
 -   **CrowdSec**: A running CrowdSec instance.
+-   **Machine Account**: You must register a "Machine" (Watcher) for this web UI to allow it to push alerts (add decisions).
+    
+    1.  Generate a secure password:
+        ```bash
+        openssl rand -hex 32
+        ```
+    2.  Create the machine:
+        ```bash
+        docker exec crowdsec cscli machines add crowdsec-web-ui --password <generated_password> -f /dev/null
+        ```
+        > [!NOTE]
+        > The `-f /dev/null` flag is crucial. It tells `cscli` **not** to overwrite the existing credentials file of the CrowdSec container. We only want to register the machine in the database, not change the container's local config.
 
 ## Run with Docker (Recommended)
 
@@ -39,16 +50,18 @@ A modern, responsive web interface for managing [CrowdSec](https://crowdsec.net/
     ```
 
 2.  **Run the container**:
-    You must mount the Docker socket so the Web UI can talk to the CrowdSec container.
+    Provide the CrowdSec LAPI URL and your Machine Credentials.
     
     ```bash
     docker run -d \
       -p 3000:3000 \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      -e CROWDSEC_CONTAINER=crowdsec_container_name \
+      -e CROWDSEC_URL=http://crowdsec-container-name:8080 \
+      -e CROWDSEC_USER=crowdsec-web-ui \
+      -e CROWDSEC_PASSWORD=<your-secure-password> \
+      --network your_crowdsec_network \
       crowdsec-web-ui
     ```
-    *Replace `crowdsec_container_name` with the actual name of your CrowdSec container (default often `crowdsec`).*
+    *Note: Ensure the container is on the same Docker network as CrowdSec so it can reach the URL.*
 
 ## Local Development
 
@@ -59,8 +72,9 @@ A modern, responsive web interface for managing [CrowdSec](https://crowdsec.net/
 
 2.  **Start the Backend**:
     ```bash
-    # Ensure you have access to docker from your host
-    export CROWDSEC_CONTAINER=crowdsec
+    export CROWDSEC_URL=http://localhost:8080
+    export CROWDSEC_USER=crowdsec-web-ui
+    export CROWDSEC_PASSWORD=<your-secure-password>
     npm start
     ```
 
@@ -73,9 +87,9 @@ A modern, responsive web interface for managing [CrowdSec](https://crowdsec.net/
 
 ## API Endpoints
 
-The backend exposes the following endpoints:
+The backend exposes the following endpoints (proxying to CrowdSec LAPI):
 
 -   `GET /api/alerts`: List all alerts.
 -   `GET /api/decisions`: List all active decisions.
--   `POST /api/decisions`: Add a new decision (Body: `{ ip, duration, reason }`).
+-   `POST /api/decisions`: Add a new decision (Body: `{ ip, duration, reason, type }`).
 -   `DELETE /api/decisions/:id`: Delete a decision by ID.
