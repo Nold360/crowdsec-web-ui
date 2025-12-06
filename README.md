@@ -1,4 +1,6 @@
-![Mascot](frontend/public/mascot.svg)
+<div align="center">
+  <img src="frontend/public/logo.svg" alt="CrowdSec Web UI Logo" width="200" />
+</div>
 
 # CrowdSec Web UI
 
