@@ -178,7 +178,15 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
           created_at: decision.created_at || alert.created_at, // Use decision time or alert time
           scenario: decision.scenario || alert.scenario || "N/A",
           value: decision.value,
-          detail: alert // Pass the full alert as detail, similar to previous implementation
+          // Optimization: Don't pass the full heavy alert (with logs/events) as detail.
+          // Just pass minimal info needed by frontend.
+          detail: {
+            origin: decision.origin || alert.source?.scope || "manual", // Fallback logic
+            type: decision.type,
+            // Keep specific fields if needed, but definitely NOT events
+            id: alert.id,
+            message: alert.message
+          }
         }));
         combinedDecisions = combinedDecisions.concat(mapped);
       }
