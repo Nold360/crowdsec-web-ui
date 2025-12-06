@@ -217,7 +217,8 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
               country: alert.source?.cn || "Unknown",
               as: alert.source?.as_name || "Unknown",
               events_count: alert.events_count || 0,
-              expiration: decision.stop_at,
+              events_count: alert.events_count || 0,
+              expiration: decision.stop_at || alert.stop_at,
               alert_id: alert.id,
               // Backwards compatibility if needed
               message: alert.message

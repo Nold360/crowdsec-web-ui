@@ -1,17 +1,48 @@
 import { useEffect, useState } from "react";
-import { fetchAlerts } from "../lib/api";
+import { useSearchParams, Link } from "react-router-dom";
+import { fetchAlerts, fetchAlert } from "../lib/api";
 import { Badge } from "../components/ui/Badge";
-import { Search, Info } from "lucide-react";
+import { Search, Info, ExternalLink } from "lucide-react";
 
 export function Alerts() {
     const [alerts, setAlerts] = useState([]);
     const [filter, setFilter] = useState("");
     const [loading, setLoading] = useState(true);
     const [selectedAlert, setSelectedAlert] = useState(null);
+    const [searchParams, setSearchParams] = useSearchParams();
 
     useEffect(() => {
-        fetchAlerts().then(setAlerts).catch(console.error).finally(() => setLoading(false));
-    }, []);
+        const loadAlerts = async () => {
+            try {
+                const alertsData = await fetchAlerts();
+                setAlerts(alertsData);
+
+                // Check if there's an alert ID in the URL
+                const alertIdParam = searchParams.get("id");
+                if (alertIdParam) {
+                    const existingAlert = alertsData.find(a => String(a.id) === alertIdParam);
+                    if (existingAlert) {
+                        setSelectedAlert(existingAlert);
+                    } else {
+                        // Fetch the specific alert if not in the list
+                        try {
+                            const alertData = await fetchAlert(alertIdParam);
+                            setSelectedAlert(alertData);
+                        } catch (err) {
+                            console.error("Alert not found", err);
+                        }
+                    }
+                    // Clear the URL param after loading
+                    setSearchParams({});
+                }
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadAlerts();
+    }, [searchParams, setSearchParams]);
 
     const filteredAlerts = alerts.filter(alert =>
         (alert.scenario || "").toLowerCase().includes(filter.toLowerCase()) ||
@@ -140,7 +171,15 @@ export function Alerts() {
                             {/* Decisions */}
                             {selectedAlert.decisions && selectedAlert.decisions.length > 0 && (
                                 <div>
-                                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Decisions Taken</h4>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Decisions Taken</h4>
+                                        <Link
+                                            to={`/decisions?alert_id=${selectedAlert.id}`}
+                                            className="text-sm text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 flex items-center gap-1 hover:underline"
+                                        >
+                                            View in Decisions <ExternalLink size={14} />
+                                        </Link>
+                                    </div>
                                     <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
                                         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                             <thead className="bg-gray-50 dark:bg-gray-900">

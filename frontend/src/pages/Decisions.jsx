@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
+import { useSearchParams, Link } from "react-router-dom";
 import { fetchDecisions, deleteDecision, addDecision } from "../lib/api";
 import { Badge } from "../components/ui/Badge";
-import { Trash2, Gavel } from "lucide-react";
+import { Trash2, Gavel, X } from "lucide-react";
 
 export function Decisions() {
     const [decisions, setDecisions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
     const [newDecision, setNewDecision] = useState({ ip: "", duration: "4h", reason: "manual" });
+    const [searchParams, setSearchParams] = useSearchParams();
+    const alertIdFilter = searchParams.get("alert_id");
 
     const handleAddDecision = async (e) => {
         e.preventDefault();
@@ -45,10 +48,29 @@ export function Decisions() {
         }
     };
 
+    const clearFilter = () => {
+        setSearchParams({});
+    };
+
+    const filteredDecisions = alertIdFilter
+        ? decisions.filter(d => String(d.detail.alert_id) === alertIdFilter)
+        : decisions;
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Decisions</h2>
+                <div className="flex items-center gap-3">
+                    <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Decisions</h2>
+                    {alertIdFilter && (
+                        <button
+                            onClick={clearFilter}
+                            className="flex items-center gap-1 text-sm bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-3 py-1 rounded-full hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-colors"
+                        >
+                            Filtered by Alert #{alertIdFilter}
+                            <X size={14} />
+                        </button>
+                    )}
+                </div>
                 <button
                     onClick={() => setShowAddModal(true)}
                     className="bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-md transition-colors flex items-center gap-2 text-sm"
@@ -79,10 +101,10 @@ export function Decisions() {
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {loading ? (
                                 <tr><td colSpan="11" className="px-6 py-4 text-center text-sm text-gray-500">Loading decisions...</td></tr>
-                            ) : decisions.length === 0 ? (
-                                <tr><td colSpan="11" className="px-6 py-4 text-center text-sm text-gray-500">No active decisions</td></tr>
+                            ) : filteredDecisions.length === 0 ? (
+                                <tr><td colSpan="11" className="px-6 py-4 text-center text-sm text-gray-500">{alertIdFilter ? "No decisions for this alert" : "No active decisions"}</td></tr>
                             ) : (
-                                decisions.map((decision) => (
+                                filteredDecisions.map((decision) => (
                                     <tr key={decision.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                         <td className="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
                                             #{decision.id}
@@ -111,8 +133,13 @@ export function Decisions() {
                                         <td className="px-3 py-4 text-xs text-gray-900 dark:text-gray-100">
                                             {new Date(decision.detail.expiration).toLocaleString()}
                                         </td>
-                                        <td className="px-3 py-4 text-xs text-gray-500 dark:text-gray-400">
-                                            {decision.detail.alert_id}
+                                        <td className="px-3 py-4 text-xs">
+                                            <Link
+                                                to={`/alerts?id=${decision.detail.alert_id}`}
+                                                className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 hover:underline"
+                                            >
+                                                #{decision.detail.alert_id}
+                                            </Link>
                                         </td>
                                         <td className="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <button
@@ -186,7 +213,8 @@ export function Decisions() {
                         </form>
                     </div>
                 </div>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 }

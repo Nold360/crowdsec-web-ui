@@ -4,6 +4,12 @@ export async function fetchAlerts() {
     return res.json();
 }
 
+export async function fetchAlert(id) {
+    const res = await fetch(`/api/alerts/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch alert');
+    return res.json();
+}
+
 export async function fetchDecisions() {
     const res = await fetch('/api/decisions');
     if (!res.ok) throw new Error('Failed to fetch decisions');
