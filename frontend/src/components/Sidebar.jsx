@@ -21,20 +21,20 @@ export function Sidebar({ isMobileMenuOpen, onClose }) {
                 ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
             `}
         >
-            <div className="p-6 flex justify-between items-center">
-                <div className="flex items-center gap-3">
+            <div className="p-4 lg:p-6 flex justify-between items-center">
+                <div className="flex items-center gap-2 lg:gap-3 min-w-0 flex-1">
                     <img
                         src="/logo.svg"
                         alt="CrowdSec Logo"
-                        className="w-8 h-8 lg:w-10 lg:h-10"
+                        className="w-8 h-8 lg:w-10 lg:h-10 flex-shrink-0"
                     />
-                    <h1 className="text-xl lg:text-2xl font-bold bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent">
+                    <h1 className="text-sm lg:text-2xl font-bold bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent leading-tight">
                         CrowdSec Web UI
                     </h1>
                 </div>
                 <button
                     onClick={onClose}
-                    className="lg:hidden p-1 rounded-md text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                    className="lg:hidden p-1 rounded-md text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 flex-shrink-0 ml-2"
                 >
                     <X size={20} />
                 </button>

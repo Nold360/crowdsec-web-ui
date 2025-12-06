@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchAlerts, fetchDecisions } from "../lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import { ShieldAlert, Gavel, Activity } from "lucide-react";
@@ -30,29 +31,33 @@ export function Dashboard() {
             <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Dashboard</h2>
 
             <div className="grid gap-6 md:grid-cols-3">
-                <Card>
-                    <CardContent className="flex items-center p-6">
-                        <div className="p-4 bg-red-100 dark:bg-red-900/20 rounded-full mr-4">
-                            <ShieldAlert className="w-8 h-8 text-red-600 dark:text-red-400" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Alerts</p>
-                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{stats.alerts}</h3>
-                        </div>
-                    </CardContent>
-                </Card>
+                <Link to="/alerts" className="block transition-transform hover:scale-105">
+                    <Card className="h-full cursor-pointer hover:shadow-lg transition-shadow">
+                        <CardContent className="flex items-center p-6">
+                            <div className="p-4 bg-red-100 dark:bg-red-900/20 rounded-full mr-4">
+                                <ShieldAlert className="w-8 h-8 text-red-600 dark:text-red-400" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Alerts</p>
+                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{stats.alerts}</h3>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </Link>
 
-                <Card>
-                    <CardContent className="flex items-center p-6">
-                        <div className="p-4 bg-blue-100 dark:bg-blue-900/20 rounded-full mr-4">
-                            <Gavel className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Active Decisions</p>
-                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{stats.decisions}</h3>
-                        </div>
-                    </CardContent>
-                </Card>
+                <Link to="/decisions" className="block transition-transform hover:scale-105">
+                    <Card className="h-full cursor-pointer hover:shadow-lg transition-shadow">
+                        <CardContent className="flex items-center p-6">
+                            <div className="p-4 bg-blue-100 dark:bg-blue-900/20 rounded-full mr-4">
+                                <Gavel className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Active Decisions</p>
+                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{stats.decisions}</h3>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </Link>
 
                 <Card>
                     <CardContent className="flex items-center p-6">
