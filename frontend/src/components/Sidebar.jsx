@@ -22,9 +22,16 @@ export function Sidebar({ isMobileMenuOpen, onClose }) {
             `}
         >
             <div className="p-6 flex justify-between items-center">
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent">
-                    CrowdSec Web UI
-                </h1>
+                <div className="flex items-center gap-3">
+                    <img
+                        src="/logo.svg"
+                        alt="CrowdSec Logo"
+                        className="w-8 h-8 lg:w-10 lg:h-10"
+                    />
+                    <h1 className="text-xl lg:text-2xl font-bold bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent">
+                        CrowdSec Web UI
+                    </h1>
+                </div>
                 <button
                     onClick={onClose}
                     className="lg:hidden p-1 rounded-md text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
