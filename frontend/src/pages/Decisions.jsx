@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { fetchDecisions, deleteDecision, addDecision } from "../lib/api";
 import { Badge } from "../components/ui/Badge";
-import { Trash2, Gavel, X } from "lucide-react";
+import { Trash2, Gavel, X, ExternalLink } from "lucide-react";
 
 export function Decisions() {
     const [decisions, setDecisions] = useState([]);
@@ -131,14 +131,15 @@ export function Decisions() {
                                             {decision.detail.events_count}
                                         </td>
                                         <td className="px-3 py-4 text-xs text-gray-900 dark:text-gray-100">
-                                            {new Date(decision.detail.expiration).toLocaleString()}
+                                            {new Date(decision.detail.expiration).toLocaleString(undefined, { hour12: false })}
                                         </td>
                                         <td className="px-3 py-4 text-xs">
                                             <Link
                                                 to={`/alerts?id=${decision.detail.alert_id}`}
-                                                className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 hover:underline"
+                                                className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 transition-colors"
+                                                title={`View Alert #${decision.detail.alert_id}`}
                                             >
-                                                #{decision.detail.alert_id}
+                                                <ExternalLink size={16} />
                                             </Link>
                                         </td>
                                         <td className="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">

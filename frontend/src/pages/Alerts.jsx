@@ -175,9 +175,10 @@ export function Alerts() {
                                         <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Decisions Taken</h4>
                                         <Link
                                             to={`/decisions?alert_id=${selectedAlert.id}`}
-                                            className="text-sm text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 flex items-center gap-1 hover:underline"
+                                            className="p-2 rounded-full text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                                            title="View in Decisions"
                                         >
-                                            View in Decisions <ExternalLink size={14} />
+                                            <ExternalLink size={18} />
                                         </Link>
                                     </div>
                                     <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
