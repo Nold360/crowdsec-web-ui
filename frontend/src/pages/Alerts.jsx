@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { fetchAlerts, fetchAlert } from "../lib/api";
 import { Badge } from "../components/ui/Badge";
-import { Search, Info, ExternalLink } from "lucide-react";
+import { Search, Info, ExternalLink, Shield } from "lucide-react";
 
 export function Alerts() {
     const [alerts, setAlerts] = useState([]);
@@ -77,14 +77,15 @@ export function Alerts() {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Time</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Scenario</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Message</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Decisions</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {loading ? (
-                                <tr><td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">Loading alerts...</td></tr>
+                                <tr><td colSpan="6" className="px-6 py-4 text-center text-sm text-gray-500">Loading alerts...</td></tr>
                             ) : filteredAlerts.length === 0 ? (
-                                <tr><td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">No alerts found</td></tr>
+                                <tr><td colSpan="6" className="px-6 py-4 text-center text-sm text-gray-500">No alerts found</td></tr>
                             ) : (
                                 filteredAlerts.map((alert) => (
                                     <tr key={alert.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
@@ -99,6 +100,20 @@ export function Alerts() {
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate" title={alert.message}>
                                             {alert.message}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                            {alert.decisions && alert.decisions.length > 0 ? (
+                                                <Link
+                                                    to={`/decisions?alert_id=${alert.id}`}
+                                                    className="flex items-center gap-1 text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 transition-colors"
+                                                    title="View decisions for this alert"
+                                                >
+                                                    <Shield size={16} className="text-red-600 dark:text-red-400" />
+                                                    <span className="text-gray-900 dark:text-gray-100 font-medium">{alert.decisions.length}</span>
+                                                </Link>
+                                            ) : (
+                                                <span className="text-gray-400">-</span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <button

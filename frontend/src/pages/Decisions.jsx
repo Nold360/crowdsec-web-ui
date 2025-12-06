@@ -94,15 +94,14 @@ export function Decisions() {
                                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">AS</th>
                                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Events</th>
                                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Expiration</th>
-                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Alert ID</th>
                                 <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {loading ? (
-                                <tr><td colSpan="11" className="px-6 py-4 text-center text-sm text-gray-500">Loading decisions...</td></tr>
+                                <tr><td colSpan="10" className="px-6 py-4 text-center text-sm text-gray-500">Loading decisions...</td></tr>
                             ) : filteredDecisions.length === 0 ? (
-                                <tr><td colSpan="11" className="px-6 py-4 text-center text-sm text-gray-500">{alertIdFilter ? "No decisions for this alert" : "No active decisions"}</td></tr>
+                                <tr><td colSpan="10" className="px-6 py-4 text-center text-sm text-gray-500">{alertIdFilter ? "No decisions for this alert" : "No active decisions"}</td></tr>
                             ) : (
                                 filteredDecisions.map((decision) => (
                                     <tr key={decision.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
@@ -131,25 +130,25 @@ export function Decisions() {
                                             {decision.detail.events_count}
                                         </td>
                                         <td className="px-3 py-4 text-xs text-gray-900 dark:text-gray-100">
-                                            {new Date(decision.detail.expiration).toLocaleString(undefined, { hour12: false })}
-                                        </td>
-                                        <td className="px-3 py-4 text-xs">
-                                            <Link
-                                                to={`/alerts?id=${decision.detail.alert_id}`}
-                                                className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 transition-colors"
-                                                title={`View Alert #${decision.detail.alert_id}`}
-                                            >
-                                                <ExternalLink size={16} />
-                                            </Link>
+                                            {decision.detail.duration}
                                         </td>
                                         <td className="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <button
-                                                onClick={() => handleDelete(decision.id)}
-                                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                                                title="Delete Decision"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <Link
+                                                    to={`/alerts?id=${decision.detail.alert_id}`}
+                                                    className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 transition-colors"
+                                                    title={`View Alert #${decision.detail.alert_id}`}
+                                                >
+                                                    <ExternalLink size={16} />
+                                                </Link>
+                                                <button
+                                                    onClick={() => handleDelete(decision.id)}
+                                                    className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                                                    title="Delete Decision"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))

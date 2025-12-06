@@ -124,12 +124,22 @@ const handleApiError = async (error, res, action, replayCallback) => {
  */
 app.get('/api/alerts', ensureAuth, async (req, res) => {
   const doRequest = async () => {
-    // Limit to 50 most recent alerts to prevent OOM on large datasets
-    const response = await apiClient.get('/v1/alerts?limit=50');
-    const alertArray = response.data || [];
-    console.log(`Fetched ${alertArray.length} alerts`);
+    // Fetch alerts and filter CAPI after
+    const response = await apiClient.get('/v1/alerts?limit=100');
+    let alertArray = response.data || [];
+
+    // Filter out CAPI alerts
+    alertArray = alertArray.filter(alert => {
+      // Check if any decision is from CAPI
+      const hasCapiDecision = alert.decisions?.some(d => d.origin === 'CAPI' || d.origin === 'capi');
+      return !hasCapiDecision;
+    });
+
+    console.log(`Fetched ${alertArray.length} alerts (excluding CAPI)`);
     alertArray.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    res.json(alertArray);
+
+    // Limit to 50 after filtering
+    res.json(alertArray.slice(0, 50));
   };
 
   try {
@@ -217,7 +227,7 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
               country: alert.source?.cn || "Unknown",
               as: alert.source?.as_name || "Unknown",
               events_count: alert.events_count || 0,
-              events_count: alert.events_count || 0,
+              duration: decision.duration || "N/A",
               expiration: decision.stop_at || alert.stop_at,
               alert_id: alert.id,
               // Backwards compatibility if needed
