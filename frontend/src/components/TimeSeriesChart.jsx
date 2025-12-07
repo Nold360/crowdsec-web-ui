@@ -28,7 +28,7 @@ export function TimeSeriesChart({ title, data, color = "#3b82f6", icon: Icon }) 
     const maxValue = Math.max(...data.map(d => d.count), 1);
     const chartHeight = 200;
     const chartWidth = 100; // percentage
-    const padding = 5; // padding for points
+    const padding = 8; // increased padding for better point visibility
 
     // Calculate points for the line
     const points = data.map((item, index) => {
@@ -44,6 +44,24 @@ export function TimeSeriesChart({ title, data, color = "#3b82f6", icon: Icon }) 
 
     // Create area path (filled area under the line)
     const areaPath = `M ${points[0].x} ${chartHeight} L ${points.map(p => `${p.x} ${p.y}`).join(' L ')} L ${points[points.length - 1].x} ${chartHeight} Z`;
+
+    // Smart tooltip positioning - avoid edges
+    const getTooltipPosition = (index) => {
+        const percentage = (index / (data.length - 1)) * 100;
+        let left = `${percentage}%`;
+        let transform = 'translate(-50%, -50%)';
+
+        // Adjust for edges
+        if (percentage < 15) {
+            left = '15%';
+            transform = 'translate(-50%, -50%)';
+        } else if (percentage > 85) {
+            left = '85%';
+            transform = 'translate(-50%, -50%)';
+        }
+
+        return { left, transform };
+    };
 
     return (
         <Card>
@@ -75,15 +93,16 @@ export function TimeSeriesChart({ title, data, color = "#3b82f6", icon: Icon }) 
                                     className="text-gray-200 dark:text-gray-700"
                                     opacity="0.5"
                                 />
-                                {/* Y-axis values */}
+                                {/* Y-axis values - improved visibility */}
                                 <text
-                                    x="-1"
+                                    x="-1.5"
                                     y={chartHeight * (1 - ratio)}
-                                    fontSize="2"
+                                    fontSize="3.5"
                                     fill="currentColor"
-                                    className="text-gray-500 dark:text-gray-400"
+                                    className="text-gray-600 dark:text-gray-300"
                                     textAnchor="end"
                                     dominantBaseline="middle"
+                                    fontWeight="500"
                                 >
                                     {Math.round(maxValue * ratio)}
                                 </text>
@@ -102,25 +121,40 @@ export function TimeSeriesChart({ title, data, color = "#3b82f6", icon: Icon }) 
                             d={linePath}
                             fill="none"
                             stroke={color}
-                            strokeWidth="0.5"
+                            strokeWidth="0.6"
                             strokeLinecap="round"
                             strokeLinejoin="round"
                         />
 
-                        {/* Points */}
+                        {/* Points - improved visibility and interaction */}
                         {points.map((point, index) => {
                             const isHovered = hoveredIndex === index;
                             return (
-                                <circle
-                                    key={index}
-                                    cx={point.x}
-                                    cy={point.y}
-                                    r={isHovered ? "1.5" : "1"}
-                                    fill={color}
-                                    className="cursor-pointer transition-all"
-                                    onMouseEnter={() => setHoveredIndex(index)}
-                                    onMouseLeave={() => setHoveredIndex(null)}
-                                />
+                                <g key={index}>
+                                    {/* Larger invisible hit area for better interaction */}
+                                    <circle
+                                        cx={point.x}
+                                        cy={point.y}
+                                        r="3"
+                                        fill="transparent"
+                                        className="cursor-pointer"
+                                        onMouseEnter={() => setHoveredIndex(index)}
+                                        onMouseLeave={() => setHoveredIndex(null)}
+                                    />
+                                    {/* Visible point */}
+                                    <circle
+                                        cx={point.x}
+                                        cy={point.y}
+                                        r={isHovered ? "2" : "1.2"}
+                                        fill={isHovered ? "#ffffff" : color}
+                                        stroke={isHovered ? color : "none"}
+                                        strokeWidth={isHovered ? "0.8" : "0"}
+                                        className="transition-all pointer-events-none"
+                                        style={{
+                                            filter: isHovered ? 'drop-shadow(0 0 2px rgba(0,0,0,0.3))' : 'none'
+                                        }}
+                                    />
+                                </g>
                             );
                         })}
                     </svg>
@@ -138,18 +172,17 @@ export function TimeSeriesChart({ title, data, color = "#3b82f6", icon: Icon }) 
                         ))}
                     </div>
 
-                    {/* Tooltip */}
+                    {/* Tooltip - improved positioning and styling */}
                     {hoveredIndex !== null && (
                         <div
-                            className="absolute bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-3 py-2 rounded-lg shadow-lg text-sm font-medium pointer-events-none z-10"
+                            className="absolute bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-3 py-2 rounded-lg shadow-xl text-sm font-medium pointer-events-none z-10 transition-all duration-150"
                             style={{
-                                left: `${(hoveredIndex / (data.length - 1)) * 100}%`,
-                                top: '50%',
-                                transform: 'translate(-50%, -50%)'
+                                ...getTooltipPosition(hoveredIndex),
+                                top: '45%',
                             }}
                         >
-                            <div className="font-bold">{points[hoveredIndex].count}</div>
-                            <div className="text-xs opacity-90">{points[hoveredIndex].label}</div>
+                            <div className="font-bold text-base">{points[hoveredIndex].count}</div>
+                            <div className="text-xs opacity-80 mt-0.5">{points[hoveredIndex].label}</div>
                         </div>
                     )}
                 </div>

@@ -134,13 +134,19 @@ export function Decisions() {
                                         </td>
                                         <td className="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <div className="flex items-center justify-end gap-2">
-                                                <Link
-                                                    to={`/alerts?id=${decision.detail.alert_id}`}
-                                                    className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 transition-colors"
-                                                    title={`View Alert #${decision.detail.alert_id}`}
-                                                >
-                                                    <ExternalLink size={16} />
-                                                </Link>
+                                                {decision.detail.alert_id ? (
+                                                    <Link
+                                                        to={`/alerts?id=${decision.detail.alert_id}`}
+                                                        className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 transition-colors"
+                                                        title={`View Alert #${decision.detail.alert_id}`}
+                                                    >
+                                                        <ExternalLink size={16} />
+                                                    </Link>
+                                                ) : (
+                                                    <span className="text-gray-300 dark:text-gray-600 cursor-not-allowed" title="No linked alert">
+                                                        <ExternalLink size={16} />
+                                                    </span>
+                                                )}
                                                 <button
                                                     onClick={() => handleDelete(decision.id)}
                                                     className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
