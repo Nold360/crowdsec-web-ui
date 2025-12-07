@@ -16,6 +16,12 @@ export async function fetchDecisions() {
     return res.json();
 }
 
+export async function fetchDecisionsForStats() {
+    const res = await fetch('/api/stats/decisions');
+    if (!res.ok) throw new Error('Failed to fetch decision statistics');
+    return res.json();
+}
+
 export async function deleteDecision(id) {
     const res = await fetch(`/api/decisions/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete decision');

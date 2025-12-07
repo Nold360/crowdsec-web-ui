@@ -125,7 +125,7 @@ const handleApiError = async (error, res, action, replayCallback) => {
 app.get('/api/alerts', ensureAuth, async (req, res) => {
   const doRequest = async () => {
     // Fetch alerts and filter CAPI after
-    const response = await apiClient.get('/v1/alerts?limit=100');
+    const response = await apiClient.get('/v1/alerts?limit=1000');
     let alertArray = response.data || [];
 
     // Filter out CAPI alerts
@@ -138,8 +138,8 @@ app.get('/api/alerts', ensureAuth, async (req, res) => {
     console.log(`Fetched ${alertArray.length} alerts (excluding CAPI)`);
     alertArray.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    // Limit to 50 after filtering
-    res.json(alertArray.slice(0, 50));
+    // Limit to 1000 after filtering
+    res.json(alertArray.slice(0, 1000));
   };
 
   try {
@@ -248,6 +248,66 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
     await doRequest();
   } catch (error) {
     handleApiError(error, res, 'fetching decisions', doRequest);
+  }
+});
+
+/**
+ * GET /api/stats/decisions
+ * Retrieves ALL decisions from alerts (not just active ones) for statistics purposes.
+ * This includes expired decisions to show accurate historical data.
+ */
+app.get('/api/stats/decisions', ensureAuth, async (req, res) => {
+  const doRequest = async () => {
+    // Fetch recent alerts (not filtering by has_active_decision)
+    const origins = ['cscli', 'crowdsec', 'cscli-import', 'manual'];
+
+    // Execute requests in parallel
+    const responses = await Promise.all(
+      origins.map(o => apiClient.get(`/v1/alerts?limit=250&origin=${o}`))
+    );
+
+    // Combine all alerts
+    let alerts = [];
+    responses.forEach(r => {
+      if (r.data && Array.isArray(r.data)) {
+        alerts = alerts.concat(r.data);
+      }
+    });
+
+    console.log(`Fetched ${alerts.length} alerts for statistics (combined origins)`);
+
+    let allDecisions = [];
+    const seenDecisionIds = new Set();
+
+    // Extract ALL decisions from each alert (including expired ones)
+    alerts.forEach(alert => {
+      if (Array.isArray(alert.decisions)) {
+        const relevantDecisions = alert.decisions.filter(d => d.origin !== 'CAPI');
+
+        const mapped = relevantDecisions.map(decision => {
+          if (seenDecisionIds.has(decision.id)) return null;
+          seenDecisionIds.add(decision.id);
+
+          return {
+            id: decision.id,
+            created_at: decision.created_at || alert.created_at,
+            scenario: decision.scenario || alert.scenario || "N/A",
+            value: decision.value
+          };
+        }).filter(Boolean);
+
+        allDecisions = allDecisions.concat(mapped);
+      }
+    });
+
+    allDecisions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(allDecisions);
+  };
+
+  try {
+    await doRequest();
+  } catch (error) {
+    handleApiError(error, res, 'fetching decision statistics', doRequest);
   }
 });
 

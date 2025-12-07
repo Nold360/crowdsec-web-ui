@@ -1,22 +1,70 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchAlerts, fetchDecisions } from "../lib/api";
+import { fetchAlerts, fetchDecisions, fetchDecisionsForStats } from "../lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
-import { ShieldAlert, Gavel, Activity } from "lucide-react";
+import { StatCard } from "../components/StatCard";
+import { TimeSeriesChart } from "../components/TimeSeriesChart";
+import {
+    filterLastNDays,
+    getTopIPs,
+    getTopCountries,
+    getTopScenarios,
+    getTopAS,
+    getAlertsPerDay,
+    getDecisionsPerDay
+} from "../lib/stats";
+import {
+    ShieldAlert,
+    Gavel,
+    Activity,
+    Globe,
+    MapPin,
+    AlertTriangle,
+    Network,
+    TrendingUp,
+    BarChart3
+} from "lucide-react";
 
 export function Dashboard() {
     const [stats, setStats] = useState({ alerts: 0, decisions: 0 });
     const [loading, setLoading] = useState(true);
+    const [statsLoading, setStatsLoading] = useState(true);
+    const [statistics, setStatistics] = useState({
+        topIPs: [],
+        topCountries: [],
+        topScenarios: [],
+        topAS: [],
+        alertsPerDay: [],
+        decisionsPerDay: []
+    });
 
     useEffect(() => {
         async function loadData() {
             try {
-                const [alerts, decisions] = await Promise.all([fetchAlerts(), fetchDecisions()]);
+                const [alerts, decisions, decisionsForStats] = await Promise.all([
+                    fetchAlerts(),
+                    fetchDecisions(),
+                    fetchDecisionsForStats()
+                ]);
                 setStats({ alerts: alerts.length, decisions: decisions.length });
+
+                // Calculate statistics for last 7 days
+                const last7DaysAlerts = filterLastNDays(alerts, 7);
+                const last7DaysDecisions = filterLastNDays(decisionsForStats, 7);
+
+                setStatistics({
+                    topIPs: getTopIPs(last7DaysAlerts, 10),
+                    topCountries: getTopCountries(last7DaysAlerts, 10),
+                    topScenarios: getTopScenarios(last7DaysAlerts, 10),
+                    topAS: getTopAS(last7DaysAlerts, 10),
+                    alertsPerDay: getAlertsPerDay(last7DaysAlerts, 7),
+                    decisionsPerDay: getDecisionsPerDay(last7DaysDecisions, 7)
+                });
             } catch (error) {
                 console.error("Failed to load dashboard data", error);
             } finally {
                 setLoading(false);
+                setStatsLoading(false);
             }
         }
         loadData();
@@ -30,6 +78,7 @@ export function Dashboard() {
         <div className="space-y-6">
             <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Dashboard</h2>
 
+            {/* Summary Cards */}
             <div className="grid gap-6 md:grid-cols-3">
                 <Link to="/alerts" className="block transition-transform hover:scale-105">
                     <Card className="h-full cursor-pointer hover:shadow-lg transition-shadow">
@@ -70,6 +119,64 @@ export function Dashboard() {
                         </div>
                     </CardContent>
                 </Card>
+            </div>
+
+            {/* Statistics Section */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                    <TrendingUp className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Last 7 Days Statistics</h3>
+                </div>
+
+                {statsLoading ? (
+                    <div className="text-center p-8 text-gray-500">Loading statistics...</div>
+                ) : (
+                    <>
+                        {/* Top Statistics Grid */}
+                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                            <StatCard
+                                title="Top IPs"
+                                icon={Globe}
+                                items={statistics.topIPs}
+                                emptyMessage="No alerts in the last 7 days"
+                            />
+                            <StatCard
+                                title="Top Countries"
+                                icon={MapPin}
+                                items={statistics.topCountries}
+                                emptyMessage="No alerts in the last 7 days"
+                            />
+                            <StatCard
+                                title="Top Scenarios"
+                                icon={AlertTriangle}
+                                items={statistics.topScenarios}
+                                emptyMessage="No alerts in the last 7 days"
+                            />
+                            <StatCard
+                                title="Top AS"
+                                icon={Network}
+                                items={statistics.topAS}
+                                emptyMessage="No alerts in the last 7 days"
+                            />
+                        </div>
+
+                        {/* Charts */}
+                        <div className="grid gap-6 md:grid-cols-2">
+                            <TimeSeriesChart
+                                title="Alerts Per Day"
+                                icon={ShieldAlert}
+                                data={statistics.alertsPerDay}
+                                color="#dc2626"
+                            />
+                            <TimeSeriesChart
+                                title="Decisions Per Day"
+                                icon={Gavel}
+                                data={statistics.decisionsPerDay}
+                                color="#2563eb"
+                            />
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );
