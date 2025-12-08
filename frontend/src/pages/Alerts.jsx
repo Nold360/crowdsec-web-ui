@@ -379,7 +379,24 @@ export function Alerts() {
                                             {ruleName && (
                                                 <div className="col-span-1 md:col-span-2">
                                                     <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Rule Name</h5>
-                                                    <div className="font-mono text-sm text-gray-900 dark:text-gray-100 font-medium break-all">{ruleName}</div>
+                                                    <div className="font-mono text-sm text-gray-900 dark:text-gray-100 font-medium break-all">
+                                                        {(() => {
+                                                            const hubUrl = getHubUrl(ruleName);
+                                                            return hubUrl ? (
+                                                                <a
+                                                                    href={hubUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center gap-1.5 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
+                                                                >
+                                                                    <span>{ruleName}</span>
+                                                                    <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                </a>
+                                                            ) : (
+                                                                ruleName
+                                                            );
+                                                        })()}
+                                                    </div>
                                                 </div>
                                             )}
                                             {ruleIds && (
