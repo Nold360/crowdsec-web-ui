@@ -162,10 +162,10 @@ export function Alerts() {
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ID</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Time</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">IP</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Country</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">IP</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">AS</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Scenario</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Message</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Decisions</th>
                             </tr>
                         </thead>
@@ -190,9 +190,6 @@ export function Alerts() {
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                                                 {new Date(alert.created_at).toLocaleString()}
                                             </td>
-                                            <td className="px-6 py-4 text-sm font-mono text-gray-900 dark:text-gray-100 max-w-[200px] truncate" title={alert.source?.ip || alert.source?.value}>
-                                                {alert.source?.ip || alert.source?.value || "N/A"}
-                                            </td>
                                             <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 flex items-center gap-2">
                                                 {alert.source?.cn ? (
                                                     <>
@@ -202,6 +199,12 @@ export function Alerts() {
                                                 ) : (
                                                     "Unknown"
                                                 )}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm font-mono text-gray-900 dark:text-gray-100 max-w-[200px] truncate" title={alert.source?.ip || alert.source?.value}>
+                                                {alert.source?.ip || alert.source?.value || "N/A"}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 max-w-[150px] truncate" title={alert.source?.as_name}>
+                                                {alert.source?.as_name || "Unknown"}
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 max-w-[200px] truncate" title={alert.scenario}>
                                                 {(() => {
@@ -224,9 +227,6 @@ export function Alerts() {
                                                         </div>
                                                     );
                                                 })()}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate" title={alert.message}>
-                                                {alert.message}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
                                                 {alert.decisions && alert.decisions.length > 0 ? (() => {
