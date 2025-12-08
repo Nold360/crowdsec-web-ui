@@ -27,6 +27,9 @@ export function StatCard({ title, icon: Icon, items, emptyMessage = "No data ava
                                         <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30 text-xs font-semibold text-primary-700 dark:text-primary-300">
                                             {idx + 1}
                                         </span>
+                                        {item.countryCode && (
+                                            <span className={`fi fi-${item.countryCode.toLowerCase()} flex-shrink-0 rounded-sm`} />
+                                        )}
                                         <span className="text-sm text-gray-900 dark:text-gray-100 truncate font-medium" title={item.label}>
                                             {item.label}
                                         </span>

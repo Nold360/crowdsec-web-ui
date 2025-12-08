@@ -50,7 +50,11 @@ export function getTopCountries(alerts, limit = 10) {
     return Object.entries(countryCounts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, limit)
-        .map(([country, count]) => ({ label: country, count }));
+        .map(([country, count]) => ({
+            label: country,
+            count,
+            countryCode: country
+        }));
 }
 
 /**
