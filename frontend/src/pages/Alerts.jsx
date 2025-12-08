@@ -387,10 +387,10 @@ export function Alerts() {
                                                                     href={hubUrl}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="flex items-center gap-1.5 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
+                                                                    className="flex items-center gap-1.5 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
                                                                 >
                                                                     <span>{ruleName}</span>
-                                                                    <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                    <ExternalLink size={12} />
                                                                 </a>
                                                             ) : (
                                                                 ruleName
