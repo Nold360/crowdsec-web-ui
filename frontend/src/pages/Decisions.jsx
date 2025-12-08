@@ -3,6 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { fetchDecisions, deleteDecision, addDecision } from "../lib/api";
 import { Badge } from "../components/ui/Badge";
 import { Trash2, Gavel, X, ExternalLink, Shield } from "lucide-react";
+import "flag-icons/css/flag-icons.min.css";
 
 export function Decisions() {
     const [decisions, setDecisions] = useState([]);
@@ -162,11 +163,18 @@ export function Decisions() {
                                             <td className="px-6 py-4 text-sm font-mono text-gray-900 dark:text-gray-100">
                                                 {decision.value}
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
-                                                {decision.detail.country}
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                                {decision.detail.country ? (
+                                                    <>
+                                                        <span className={`fi fi-${decision.detail.country.toLowerCase()}`}></span>
+                                                        <span>{decision.detail.country}</span>
+                                                    </>
+                                                ) : (
+                                                    decision.detail.country || "Unknown"
+                                                )}
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
-                                                <Badge variant="warning">{decision.detail.reason}</Badge>
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 max-w-[200px] truncate" title={decision.detail.reason}>
+                                                <Badge variant="warning" className="truncate block w-full">{decision.detail.reason}</Badge>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
                                                 <Badge variant="danger">{decision.detail.action || "ban"}</Badge>
@@ -174,7 +182,7 @@ export function Decisions() {
                                             <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 max-w-[150px] truncate" title={decision.detail.as}>
                                                 {decision.detail.as}
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">
                                                 {decision.detail.duration}
                                                 {isExpired && <span className="ml-2 text-xs text-red-500 dark:text-red-400">(Expired)</span>}
                                             </td>

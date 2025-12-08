@@ -3,6 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { fetchAlerts, fetchAlert } from "../lib/api";
 import { Badge } from "../components/ui/Badge";
 import { Search, Info, ExternalLink, Shield } from "lucide-react";
+import "flag-icons/css/flag-icons.min.css";
 
 export function Alerts() {
     const [alerts, setAlerts] = useState([]);
@@ -46,12 +47,9 @@ export function Alerts() {
                             console.error("Alert not found", err);
                         }
                     }
-                    // Clear the URL param after loading
-                    // setSearchParams({}); // Don't clear immediately if we want to keep state, but existing behavior cleared it.
-                    // Keeping existing behavior for ID but adding 'q' support below.
                 }
 
-                // Check for search query param
+                // Check for generic search query param
                 const queryParam = searchParams.get("q");
                 if (queryParam) {
                     setFilter(queryParam);
@@ -68,17 +66,35 @@ export function Alerts() {
 
     const filteredAlerts = alerts.filter(alert => {
         const search = filter.toLowerCase();
+
+        // Specific query params
+        const paramIp = (searchParams.get("ip") || "").toLowerCase();
+        const paramCountry = (searchParams.get("country") || "").toLowerCase();
+        const paramScenario = (searchParams.get("scenario") || "").toLowerCase();
+        const paramAs = (searchParams.get("as") || "").toLowerCase();
+
         const scenario = (alert.scenario || "").toLowerCase();
         const message = (alert.message || "").toLowerCase();
         const ip = (alert.source?.ip || alert.source?.value || "").toLowerCase();
         const cn = (alert.source?.cn || "").toLowerCase();
         const asName = (alert.source?.as_name || "").toLowerCase();
 
-        return scenario.includes(search) ||
-            message.includes(search) ||
-            ip.includes(search) ||
-            cn.includes(search) ||
-            asName.includes(search);
+        // Check specific filters if present
+        if (paramIp && !ip.includes(paramIp)) return false;
+        if (paramCountry && !cn.includes(paramCountry)) return false;
+        if (paramScenario && !scenario.includes(paramScenario)) return false;
+        if (paramAs && !asName.includes(paramAs)) return false;
+
+        // Check generic search
+        if (search) {
+            return scenario.includes(search) ||
+                message.includes(search) ||
+                ip.includes(search) ||
+                cn.includes(search) ||
+                asName.includes(search);
+        }
+
+        return true;
     });
 
     const visibleAlerts = filteredAlerts.slice(0, displayedCount);
@@ -93,6 +109,37 @@ export function Alerts() {
                     </div>
                 )}
             </div>
+
+            {/* Show active filters */}
+            {(searchParams.get("ip") || searchParams.get("country") || searchParams.get("scenario") || searchParams.get("as")) && (
+                <div className="flex flex-wrap gap-2">
+                    {["ip", "country", "scenario", "as"].map(key => {
+                        const val = searchParams.get(key);
+                        if (!val) return null;
+                        return (
+                            <Badge key={key} variant="secondary" className="flex items-center gap-1">
+                                <span className="font-semibold uppercase">{key}:</span> {val}
+                                <button
+                                    onClick={() => {
+                                        const newParams = new URLSearchParams(searchParams);
+                                        newParams.delete(key);
+                                        setSearchParams(newParams);
+                                    }}
+                                    className="ml-1 hover:text-red-500"
+                                >
+                                    &times;
+                                </button>
+                            </Badge>
+                        );
+                    })}
+                    <button
+                        onClick={() => setSearchParams({})}
+                        className="text-xs text-gray-500 hover:text-gray-900 dark:hover:text-gray-300 underline"
+                    >
+                        Clear all filters
+                    </button>
+                </div>
+            )}
 
             <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -119,14 +166,13 @@ export function Alerts() {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Scenario</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Message</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Decisions</th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {loading ? (
-                                <tr><td colSpan="8" className="px-6 py-4 text-center text-sm text-gray-500">Loading alerts...</td></tr>
+                                <tr><td colSpan="7" className="px-6 py-4 text-center text-sm text-gray-500">Loading alerts...</td></tr>
                             ) : visibleAlerts.length === 0 ? (
-                                <tr><td colSpan="8" className="px-6 py-4 text-center text-sm text-gray-500">No alerts found</td></tr>
+                                <tr><td colSpan="7" className="px-6 py-4 text-center text-sm text-gray-500">No alerts found</td></tr>
                             ) : (
                                 visibleAlerts.map((alert, index) => {
                                     const isLastElement = index === visibleAlerts.length - 1;
@@ -134,7 +180,8 @@ export function Alerts() {
                                         <tr
                                             key={alert.id}
                                             ref={isLastElement ? lastAlertElementRef : null}
-                                            className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                            onClick={() => setSelectedAlert(alert)}
+                                            className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
                                         >
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                                 #{alert.id}
@@ -145,16 +192,23 @@ export function Alerts() {
                                             <td className="px-6 py-4 text-sm font-mono text-gray-900 dark:text-gray-100">
                                                 {alert.source?.ip || alert.source?.value || "N/A"}
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
-                                                {alert.source?.cn || "Unknown"}
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                                {alert.source?.cn ? (
+                                                    <>
+                                                        <span className={`fi fi-${alert.source.cn.toLowerCase()}`}></span>
+                                                        <span>{alert.source.cn}</span>
+                                                    </>
+                                                ) : (
+                                                    "Unknown"
+                                                )}
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
-                                                <Badge variant="warning">{alert.scenario}</Badge>
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 max-w-[200px] truncate" title={alert.scenario}>
+                                                <Badge variant="warning" className="truncate block w-full">{alert.scenario}</Badge>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate" title={alert.message}>
                                                 {alert.message}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
                                                 {alert.decisions && alert.decisions.length > 0 ? (() => {
                                                     // Check if there are any active (non-expired) decisions
                                                     const activeDecisions = alert.decisions.filter(d => {
@@ -162,7 +216,6 @@ export function Alerts() {
                                                             return new Date(d.stop_at) > new Date();
                                                         }
                                                         // If stop_at is missing, check if duration implies expiration
-                                                        // CrowdSec LAPI often returns relative duration (e.g., "-4h20m") for expired items
                                                         if (d.duration && d.duration.startsWith('-')) {
                                                             return false;
                                                         }
@@ -198,14 +251,6 @@ export function Alerts() {
                                                 })() : (
                                                     <span className="text-gray-400">-</span>
                                                 )}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button
-                                                    onClick={() => setSelectedAlert(alert)}
-                                                    className="text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
-                                                >
-                                                    <Info size={18} />
-                                                </button>
                                             </td>
                                         </tr>
                                     );

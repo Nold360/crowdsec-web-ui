@@ -11,6 +11,11 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: env.CROWDSEC_URL || 'http://localhost:3000',
           changeOrigin: true,
+          configure: (proxy, options) => {
+            if (env.CROWDSEC_USER && env.CROWDSEC_PASSWORD) {
+              options.auth = `${env.CROWDSEC_USER}:${env.CROWDSEC_PASSWORD}`;
+            }
+          }
         }
       }
     }
