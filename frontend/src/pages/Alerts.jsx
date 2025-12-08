@@ -315,18 +315,22 @@ export function Alerts() {
 
                             {/* AppSec / WAF Context */}
                             {(() => {
-                                // Find an event with AppSec data
+                                // Find an event with AppSec data (look for matched_zones or specific rule names)
                                 const appSecEvent = selectedAlert.events?.find(e =>
-                                    e.meta?.some(m => m.key === 'waf_rule_id' || m.key === 'rule_type' && m.value === 'appsec_rule')
+                                    e.meta?.some(m => m.key === 'matched_zones' || m.key === 'rule_name' || m.key === 'appsec_action')
                                 );
 
                                 if (!appSecEvent) return null;
 
                                 const getMeta = (key) => appSecEvent.meta?.find(m => m.key === key)?.value;
-                                const wafRuleId = getMeta('waf_rule_id');
-                                const matchedZone = getMeta('matched_zone');
-                                const match = getMeta('match');
-                                const ruleType = getMeta('rule_type');
+
+                                const ruleName = getMeta('rule_name');
+                                const ruleIds = getMeta('rule_ids');
+                                const matchedZones = getMeta('matched_zones');
+                                const uri = getMeta('uri') || getMeta('target_uri');
+                                const msg = getMeta('msg') || getMeta('message');
+                                // 'match' might not be present, check specific known keys or fallback
+                                const payload = getMeta('match') || getMeta('data');
 
                                 return (
                                     <div className="p-5 bg-red-50 dark:bg-red-900/10 rounded-lg border border-red-100 dark:border-red-900/30">
@@ -334,21 +338,43 @@ export function Alerts() {
                                             <Shield size={20} /> AppSec Violation
                                         </h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div>
-                                                <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Rule ID</h5>
-                                                <div className="font-mono text-sm text-gray-900 dark:text-gray-100 font-medium">{wafRuleId || "N/A"}</div>
-                                            </div>
-                                            <div>
-                                                <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Matched Zone</h5>
-                                                <div className="font-mono text-sm text-gray-900 dark:text-gray-100">
-                                                    <Badge variant="outline">{matchedZone || "N/A"}</Badge>
-                                                </div>
-                                            </div>
-                                            {match && (
+                                            {ruleName && (
                                                 <div className="col-span-1 md:col-span-2">
-                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Malicious Payload (Match)</h5>
+                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Rule Name</h5>
+                                                    <div className="font-mono text-sm text-gray-900 dark:text-gray-100 font-medium break-all">{ruleName}</div>
+                                                </div>
+                                            )}
+                                            {ruleIds && (
+                                                <div>
+                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Rule ID(s)</h5>
+                                                    <div className="font-mono text-sm text-gray-900 dark:text-gray-100">{ruleIds}</div>
+                                                </div>
+                                            )}
+                                            {matchedZones && (
+                                                <div>
+                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Matched Zone</h5>
+                                                    <div className="font-mono text-sm text-gray-900 dark:text-gray-100">
+                                                        <Badge variant="outline">{matchedZones}</Badge>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {uri && (
+                                                <div className="col-span-1 md:col-span-2">
+                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Target URI</h5>
+                                                    <div className="font-mono text-sm text-gray-900 dark:text-gray-100 break-all">{uri}</div>
+                                                </div>
+                                            )}
+                                            {msg && (
+                                                <div className="col-span-1 md:col-span-2">
+                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Details</h5>
+                                                    <div className="text-sm text-gray-900 dark:text-gray-100 font-medium">{msg}</div>
+                                                </div>
+                                            )}
+                                            {payload && (
+                                                <div className="col-span-1 md:col-span-2">
+                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Malicious Payload</h5>
                                                     <div className="font-mono text-xs bg-white dark:bg-gray-950 p-3 rounded border border-gray-200 dark:border-gray-800 break-all text-red-600 dark:text-red-400">
-                                                        {match}
+                                                        {payload}
                                                     </div>
                                                 </div>
                                             )}
