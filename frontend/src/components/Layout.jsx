@@ -52,7 +52,7 @@ export function Layout() {
                         {theme === "light" ? <Moon size={20} /> : <Sun size={20} />}
                     </button>
                 </header>
-                <div className="container mx-auto p-4 lg:p-8 max-w-7xl pt-20">
+                <div className="container mx-auto p-4 lg:p-8 max-w-[1920px] pt-20">
                     <Outlet />
                 </div>
             </main>
