@@ -179,7 +179,7 @@ export function Decisions() {
                                                     const hubUrl = getHubUrl(decision.detail.reason);
                                                     return (
                                                         <div className="flex items-center gap-1.5">
-                                                            <Badge variant="warning" className="truncate block">{decision.detail.reason}</Badge>
+                                                            <span className="truncate block font-medium text-gray-900 dark:text-gray-200">{decision.detail.reason}</span>
                                                             {hubUrl && (
                                                                 <a
                                                                     href={hubUrl}

@@ -208,7 +208,7 @@ export function Alerts() {
                                                     const hubUrl = getHubUrl(alert.scenario);
                                                     return (
                                                         <div className="flex items-center gap-1.5">
-                                                            <Badge variant="warning" className="truncate block">{alert.scenario}</Badge>
+                                                            <span className="truncate block font-medium text-gray-900 dark:text-gray-200">{alert.scenario}</span>
                                                             {hubUrl && (
                                                                 <a
                                                                     href={hubUrl}
@@ -312,7 +312,7 @@ export function Alerts() {
                                             const hubUrl = getHubUrl(selectedAlert.scenario);
                                             return (
                                                 <div className="flex items-center gap-1.5">
-                                                    <Badge variant="warning">{selectedAlert.scenario}</Badge>
+                                                    <span className="font-medium text-gray-900 dark:text-gray-200">{selectedAlert.scenario}</span>
                                                     {hubUrl && (
                                                         <a
                                                             href={hubUrl}
