@@ -177,12 +177,21 @@ export function Decisions() {
                                             <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 max-w-[200px] truncate" title={decision.detail.reason}>
                                                 {(() => {
                                                     const hubUrl = getHubUrl(decision.detail.reason);
-                                                    return hubUrl ? (
-                                                        <a href={hubUrl} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary-600 dark:text-primary-400">
-                                                            <Badge variant="warning" className="truncate block w-full">{decision.detail.reason}</Badge>
-                                                        </a>
-                                                    ) : (
-                                                        <Badge variant="warning" className="truncate block w-full">{decision.detail.reason}</Badge>
+                                                    return (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Badge variant="warning" className="truncate block">{decision.detail.reason}</Badge>
+                                                            {hubUrl && (
+                                                                <a
+                                                                    href={hubUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors flex-shrink-0"
+                                                                    title="View on CrowdSec Hub"
+                                                                >
+                                                                    <ExternalLink size={14} />
+                                                                </a>
+                                                            )}
+                                                        </div>
                                                     );
                                                 })()}
                                             </td>

@@ -206,14 +206,22 @@ export function Alerts() {
                                             <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 max-w-[200px] truncate" title={alert.scenario}>
                                                 {(() => {
                                                     const hubUrl = getHubUrl(alert.scenario);
-                                                    return hubUrl ? (
-                                                        <a href={hubUrl} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary-600 dark:text-primary-400 group flex items-center gap-1">
-                                                            <Badge variant="warning" className="truncate block w-full group-hover:bg-yellow-200 dark:group-hover:bg-yellow-900/50 transition-colors">
-                                                                {alert.scenario}
-                                                            </Badge>
-                                                        </a>
-                                                    ) : (
-                                                        <Badge variant="warning" className="truncate block w-full">{alert.scenario}</Badge>
+                                                    return (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Badge variant="warning" className="truncate block">{alert.scenario}</Badge>
+                                                            {hubUrl && (
+                                                                <a
+                                                                    href={hubUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors flex-shrink-0"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    title="View on CrowdSec Hub"
+                                                                >
+                                                                    <ExternalLink size={14} />
+                                                                </a>
+                                                            )}
+                                                        </div>
                                                     );
                                                 })()}
                                             </td>
@@ -302,13 +310,21 @@ export function Alerts() {
                                     <div className="font-medium text-gray-900 dark:text-gray-100 break-words">
                                         {(() => {
                                             const hubUrl = getHubUrl(selectedAlert.scenario);
-                                            return hubUrl ? (
-                                                <a href={hubUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline text-primary-600 dark:text-primary-400">
+                                            return (
+                                                <div className="flex items-center gap-1.5">
                                                     <Badge variant="warning">{selectedAlert.scenario}</Badge>
-                                                    <ExternalLink size={12} />
-                                                </a>
-                                            ) : (
-                                                <Badge variant="warning">{selectedAlert.scenario}</Badge>
+                                                    {hubUrl && (
+                                                        <a
+                                                            href={hubUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                                                            title="View on CrowdSec Hub"
+                                                        >
+                                                            <ExternalLink size={14} />
+                                                        </a>
+                                                    )}
+                                                </div>
                                             );
                                         })()}
                                     </div>
