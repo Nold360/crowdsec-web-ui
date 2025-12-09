@@ -21,7 +21,7 @@ jobs:
       - name: In die Gitea Registry einloggen
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ secrets.REGISTRY }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_TOKEN }}
      
@@ -31,4 +31,4 @@ jobs:
            context: .
            push: true
            platforms: linux/amd64,linux/arm64
-           tags: ghcr.io/TheDuffman85/crowdsec-web-ui:latest
+           tags: ${{ secrets.REGISTRY_IMAGE }}:latest
