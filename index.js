@@ -131,7 +131,7 @@ app.get('/api/alerts', ensureAuth, async (req, res) => {
     // Filter by origin at LAPI level
     // origin: cscli (manual), crowdsec (scenarios), cscli-import (imported)
     // Exclude CAPI by not requesting it.
-    const origins = ['cscli', 'crowdsec', 'cscli-import'];
+    const origins = ['cscli', 'crowdsec', 'cscli-import', 'manual', 'appsec', 'lists'];
 
     // Execute requests in parallel
     const responses = await Promise.all(
@@ -186,7 +186,7 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
 
     // Fetch alerts that have decisions
     // Filtering by origin at LAPI level
-    const origins = ['cscli', 'crowdsec', 'cscli-import', 'manual'];
+    const origins = ['cscli', 'crowdsec', 'cscli-import', 'manual', 'appsec', 'lists'];
 
     // Execute requests in parallel
     // If includeExpired is true, we just want everything since X time.
@@ -313,7 +313,7 @@ app.get('/api/stats/decisions', ensureAuth, async (req, res) => {
   const doRequest = async () => {
     // Default lookback period
     const since = req.query.since || CROWDSEC_LOOKBACK_PERIOD;
-    const origins = ['cscli', 'crowdsec', 'cscli-import', 'manual'];
+    const origins = ['cscli', 'crowdsec', 'cscli-import', 'manual', 'appsec', 'lists'];
 
     // Execute requests in parallel
     const responses = await Promise.all(
