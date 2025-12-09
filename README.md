@@ -8,19 +8,45 @@ A modern, responsive web interface for managing [CrowdSec](https://crowdsec.net/
 
 ## Features
 
--   **Dashboard**: High-level overview of total alerts and active decisions.
--   **Alerts Management**:
-    -   View detailed logs of security events.
-    -   Filter alerts by scenario or message.
-    -   Detailed modal view showing attacker IP, location, and triggered events.
--   **Decisions Management**:
-    -   View active bans/decisions.
-    -   **Add Manual Decisions**: Ban IPs directly from the UI.
-    -   **Delete Decisions**: Unban IPs with a single click.
--   **Modern UI**:
-    -   Dark/Light mode support.
-    -   Responsive design for mobile and desktop.
-    -   Real-time feeling with fast React interactions.
+### Dashboard
+High-level overview of total alerts and active decisions.
+
+<a href="screenshots/dashboard.png">
+  <img src="screenshots/dashboard.png" alt="Dashboard" width="50%">
+</a>
+
+### Alerts Management
+View detailed logs of security events. Filter alerts by scenario, IP, or country.
+
+<a href="screenshots/alerts.png">
+  <img src="screenshots/alerts.png" alt="Alerts" width="50%">
+</a>
+
+### Alert Details
+Detailed modal view showing attacker IP, AS information, location with map, and triggered events breakdown.
+
+<a href="screenshots/alert_details.png">
+  <img src="screenshots/alert_details.png" alt="Alert Details" width="50%">
+</a>
+
+### Decisions Management
+View and manage active bans/decisions.
+
+<a href="screenshots/decisions.png">
+  <img src="screenshots/decisions.png" alt="Decisions" width="50%">
+</a>
+
+### Manual Actions
+Ban IPs directly from the UI with custom duration and reason.
+
+<a href="screenshots/add_decision.png">
+  <img src="screenshots/add_decision.png" alt="Add Decision" width="50%">
+</a>
+
+### Modern UI
+-   **Dark/Light Mode**: Full support for both themes.
+-   **Responsive**: Optimized for mobile and desktop.
+-   **Real-time**: Fast interactions using modern React technology.
 
 > [!CAUTION]
 > **Security Notice**: This application **does not provide any built-in authentication mechanism**. It is NOT intended to be exposed publicly without protection. We strongly recommend deploying this application behind a reverse proxy with an Identity Provider (IdP) such as [Authentik](https://goauthentik.io/), [Authelia](https://www.authelia.com/), or [Keycloak](https://www.keycloak.org/) to handle authentication and authorization.
