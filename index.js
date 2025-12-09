@@ -131,21 +131,29 @@ app.get('/api/alerts', ensureAuth, async (req, res) => {
     // Filter by origin at LAPI level
     // origin: cscli (manual), crowdsec (scenarios), cscli-import (imported)
     // Exclude CAPI by not requesting it.
+    // ALSO fetch by scope (Ip, Range) to catch alerts with undefined origin (e.g. WAF logs without decisions)
+    // CAPI usually uses specific scopes (like list names), so querying Scope=Ip/Range effectively filters CAPI too.
     const origins = ['cscli', 'crowdsec', 'cscli-import', 'manual', 'appsec', 'lists'];
+    const scopes = ['Ip', 'Range'];
 
     // Execute requests in parallel
-    const responses = await Promise.all(
-      origins.map(o => apiClient.get(`/v1/alerts?since=${since}&origin=${o}`))
-    );
+    const originPromises = origins.map(o => apiClient.get(`/v1/alerts?since=${since}&origin=${o}`));
+    const scopePromises = scopes.map(s => apiClient.get(`/v1/alerts?since=${since}&scope=${s}`));
 
-    let alertArray = [];
+    const responses = await Promise.all([...originPromises, ...scopePromises]);
+
+    let alertMap = new Map();
     responses.forEach(r => {
       if (r.data && Array.isArray(r.data)) {
-        alertArray = alertArray.concat(r.data);
+        r.data.forEach(alert => {
+          alertMap.set(alert.id, alert);
+        });
       }
     });
 
-    console.log(`Fetched ${alertArray.length} alerts (excluding CAPI) Since: ${since}`);
+    const alertArray = Array.from(alertMap.values());
+
+    console.log(`Fetched ${alertArray.length} unique alerts (excluding CAPI) Since: ${since}`);
     alertArray.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     res.json(alertArray);
@@ -185,8 +193,9 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
     const since = req.query.since || CROWDSEC_LOOKBACK_PERIOD;
 
     // Fetch alerts that have decisions
-    // Filtering by origin at LAPI level
+    // Filtering by origin at LAPI level and Scope to include all relevant alerts
     const origins = ['cscli', 'crowdsec', 'cscli-import', 'manual', 'appsec', 'lists'];
+    const scopes = ['Ip', 'Range'];
 
     // Execute requests in parallel
     // If includeExpired is true, we just want everything since X time.
@@ -201,19 +210,24 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
     // So we will apply 'since' to this query as well.
     const queryParam = includeExpired ? `since=${since}` : `has_active_decision=true&since=${since}`;
 
-    const responses = await Promise.all(
-      origins.map(o => apiClient.get(`/v1/alerts?${queryParam}&origin=${o}`))
-    );
+    const originPromises = origins.map(o => apiClient.get(`/v1/alerts?${queryParam}&origin=${o}`));
+    const scopePromises = scopes.map(s => apiClient.get(`/v1/alerts?${queryParam}&scope=${s}`));
 
-    // Combine all alerts flattened
-    let alerts = [];
+    const responses = await Promise.all([...originPromises, ...scopePromises]);
+
+    // Combine all alerts flattened and deduplicated
+    let alertMap = new Map();
     responses.forEach(r => {
       if (r.data && Array.isArray(r.data)) {
-        alerts = alerts.concat(r.data);
+        r.data.forEach(alert => {
+          alertMap.set(alert.id, alert);
+        });
       }
     });
 
-    console.log(`Fetched ${alerts.length} alerts with ${includeExpired ? 'all' : 'active'} decisions (combined origins)`);
+    const alerts = Array.from(alertMap.values());
+
+    console.log(`Fetched ${alerts.length} unique alerts with ${includeExpired ? 'all' : 'active'} decisions`);
 
     let combinedDecisions = [];
     const seenDecisionIds = new Set(); // specific deduplication just in case
@@ -314,21 +328,27 @@ app.get('/api/stats/decisions', ensureAuth, async (req, res) => {
     // Default lookback period
     const since = req.query.since || CROWDSEC_LOOKBACK_PERIOD;
     const origins = ['cscli', 'crowdsec', 'cscli-import', 'manual', 'appsec', 'lists'];
+    const scopes = ['Ip', 'Range'];
 
     // Execute requests in parallel
-    const responses = await Promise.all(
-      origins.map(o => apiClient.get(`/v1/alerts?since=${since}&origin=${o}`))
-    );
+    const originPromises = origins.map(o => apiClient.get(`/v1/alerts?since=${since}&origin=${o}`));
+    const scopePromises = scopes.map(s => apiClient.get(`/v1/alerts?since=${since}&scope=${s}`));
 
-    // Combine all alerts
-    let alerts = [];
+    const responses = await Promise.all([...originPromises, ...scopePromises]);
+
+    // Combine all alerts and deduplicate by ID
+    let alertMap = new Map();
     responses.forEach(r => {
       if (r.data && Array.isArray(r.data)) {
-        alerts = alerts.concat(r.data);
+        r.data.forEach(alert => {
+          alertMap.set(alert.id, alert);
+        });
       }
     });
 
-    console.log(`Fetched ${alerts.length} alerts for statistics (combined origins)`);
+    const alerts = Array.from(alertMap.values());
+
+    console.log(`Fetched ${alerts.length} unique alerts for statistics`);
 
     let allDecisions = [];
     const seenDecisionIds = new Set();
