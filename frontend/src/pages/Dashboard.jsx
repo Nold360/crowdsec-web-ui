@@ -1,8 +1,9 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchAlerts, fetchDecisions, fetchDecisionsForStats, fetchConfig } from "../lib/api";
 import { getHubUrl } from "../lib/utils";
+import { useRefresh } from "../contexts/RefreshContext";
 import { Card, CardContent } from "../components/ui/Card";
 import { StatCard } from "../components/StatCard";
 import { ActivityBarChart } from "../components/DashboardCharts";
@@ -14,8 +15,7 @@ import {
     getAllCountries,
     getTopScenarios,
     getTopAS,
-    getAlertsPerDay,
-    getDecisionsPerDay
+    getAggregatedData
 } from "../lib/stats";
 import {
     ShieldAlert,
@@ -29,10 +29,12 @@ import {
 } from "lucide-react";
 
 export function Dashboard() {
+    const { refreshSignal, setLastUpdated } = useRefresh();
     const [stats, setStats] = useState({ alerts: 0, decisions: 0 });
     const [loading, setLoading] = useState(true);
     const [statsLoading, setStatsLoading] = useState(true);
     const [config, setConfig] = useState({ lookback_days: 7 });
+    const [granularity, setGranularity] = useState('day');
     const [isOnline, setIsOnline] = useState(true);
 
     // Raw data
@@ -51,33 +53,54 @@ export function Dashboard() {
         ip: null
     });
 
-    useEffect(() => {
-        async function loadData() {
-            try {
-                // Fetch config first to know how many days to filter
-                const configData = await fetchConfig();
-                setConfig(configData);
+    const loadData = useCallback(async (isBackground = false) => {
+        try {
+            // Only fetch config on initial load (or if we want to support dynamic config changes, but rarely changs)
+            // Let's re-fetch config only if not background, or just always fetch it (it's fast)
+            // To be safe, let's just fetch everything.
 
-                const [alerts, decisions, decisionsForStats] = await Promise.all([
-                    fetchAlerts(),
-                    fetchDecisions(),
-                    fetchDecisionsForStats()
-                ]);
+            // Only set loading spinners on initial load
+            if (!isBackground) {
+                // We don't necessarily reset loading to true if we are just re-mounting? 
+                // Actually loading=true is default.
+            }
 
-                setRawData({ alerts, decisions, decisionsForStats });
-                setStats({ alerts: alerts.length, decisions: decisions.length });
-                setIsOnline(true);
+            const configData = await fetchConfig();
+            setConfig(configData);
 
-            } catch (error) {
-                console.error("Failed to load dashboard data", error);
-                setIsOnline(false);
-            } finally {
+            const [alerts, decisions, decisionsForStats] = await Promise.all([
+                fetchAlerts(),
+                fetchDecisions(),
+                fetchDecisionsForStats()
+            ]);
+
+            setRawData({ alerts, decisions, decisionsForStats });
+            setStats({ alerts: alerts.length, decisions: decisions.length });
+            setIsOnline(true);
+            setLastUpdated(new Date());
+
+        } catch (error) {
+            console.error("Failed to load dashboard data", error);
+            setIsOnline(false);
+        } finally {
+            if (!isBackground) {
                 setLoading(false);
                 setStatsLoading(false);
             }
         }
-        loadData();
-    }, []);
+    }, [setLastUpdated]);
+
+    // Initial Load
+    useEffect(() => {
+        loadData(false);
+    }, [loadData]);
+
+    // Background Refresh
+    useEffect(() => {
+        if (refreshSignal > 0) {
+            loadData(true);
+        }
+    }, [refreshSignal, loadData]);
 
     // Filter Logic
     const filteredData = useMemo(() => {
@@ -152,10 +175,10 @@ export function Dashboard() {
             allCountries: getAllCountries(filteredData.alerts),  // For map display
             topScenarios: getTopScenarios(filteredData.alerts, 10),
             topAS: getTopAS(filteredData.alerts, 10),
-            alertsPerDay: getAlertsPerDay(filteredData.alerts, lookbackDays),
-            decisionsPerDay: getDecisionsPerDay(filteredData.decisions, lookbackDays)
+            alertsHistory: getAggregatedData(filteredData.alerts, lookbackDays, granularity),
+            decisionsHistory: getAggregatedData(filteredData.decisions, lookbackDays, granularity)
         };
-    }, [filteredData, config.lookback_days]);
+    }, [filteredData, config.lookback_days, granularity]);
 
     // Handle Filters
     const toggleFilter = (type, value) => {
@@ -267,17 +290,19 @@ export function Dashboard() {
                         {/* Charts Area */}
                         <div className="grid gap-8 md:grid-cols-2">
                             {/* Activity Chart - Left */}
-                            <div className="h-[280px]">
+                            <div className="h-[350px]">
                                 <ActivityBarChart
-                                    alertsData={statistics.alertsPerDay}
-                                    decisionsData={statistics.decisionsPerDay}
+                                    alertsData={statistics.alertsHistory}
+                                    decisionsData={statistics.decisionsHistory}
                                     onDateSelect={(date) => toggleFilter('date', date)}
                                     selectedDate={filters.date}
+                                    granularity={granularity}
+                                    setGranularity={setGranularity}
                                 />
                             </div>
 
                             {/* World Map - Right */}
-                            <div className="h-[280px]">
+                            <div className="h-[350px]">
                                 <WorldMapCard
                                     data={statistics.allCountries}
                                     onCountrySelect={(code) => toggleFilter('country', code)}
