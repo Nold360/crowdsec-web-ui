@@ -21,7 +21,8 @@ console.error = function (...args) {
 };
 
 // Persist refresh interval to a config file
-const CONFIG_FILE = path.join(__dirname, '.config.json');
+// Allow overriding via env var (for Docker persistence), otherwise default to local .config.json
+const CONFIG_FILE = process.env.CONFIG_FILE || path.join(__dirname, '.config.json');
 
 function loadPersistedConfig() {
   try {
@@ -38,6 +39,10 @@ function loadPersistedConfig() {
 
 function savePersistedConfig(config) {
   try {
+    const configDir = path.dirname(CONFIG_FILE);
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true });
+    }
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
     console.log('Saved config to file:', config);
   } catch (error) {
@@ -268,7 +273,7 @@ async function initializeCache() {
       if (Array.isArray(alert.decisions)) {
         alert.decisions.forEach(decision => {
           if (decision.origin !== 'CAPI') {
-            cache.decisionsForStats.set(decision.id, {
+            cache.decisionsForStats.set(String(decision.id), {
               id: decision.id,
               created_at: decision.created_at || alert.created_at,
               scenario: decision.scenario || alert.scenario || "N/A",
@@ -305,7 +310,7 @@ async function initializeCache() {
                 message: alert.message
               }
             };
-            cache.decisions.set(decision.id, decisionData);
+            cache.decisions.set(String(decision.id), decisionData);
           }
         });
       }
@@ -380,7 +385,7 @@ async function updateCacheDelta() {
                 message: alert.message
               }
             };
-            cache.decisions.set(decision.id, decisionData);
+            cache.decisions.set(String(decision.id), decisionData);
           }
         });
       }
@@ -396,7 +401,7 @@ async function updateCacheDelta() {
         if (Array.isArray(alert.decisions)) {
           alert.decisions.forEach(decision => {
             if (decision.origin !== 'CAPI' && !cache.decisionsForStats.has(decision.id)) {
-              cache.decisionsForStats.set(decision.id, {
+              cache.decisionsForStats.set(String(decision.id), {
                 id: decision.id,
                 created_at: decision.created_at || alert.created_at,
                 scenario: decision.scenario || alert.scenario || "N/A",
@@ -642,7 +647,7 @@ const hydrateAlertWithDecisions = (alert) => {
     alertClone.decisions = alertClone.decisions.map(decision => {
       // Check if we have fresh data for this decision in our active cache
       // The cache.decisions map contains the LATEST data from LAPI
-      const cachedDecision = cache.decisions.get(decision.id);
+      const cachedDecision = cache.decisions.get(String(decision.id));
 
       if (cachedDecision) {
         // Hydrate with fresh details where applicable
@@ -653,7 +658,8 @@ const hydrateAlertWithDecisions = (alert) => {
           stop_at: cachedDecision.detail?.expiration || decision.stop_at, // Update expiration time
           type: cachedDecision.detail?.type || decision.type,
           value: cachedDecision.value || decision.value,
-          origin: cachedDecision.detail?.origin || decision.origin
+          origin: cachedDecision.detail?.origin || decision.origin,
+          expired: cachedDecision.expired // Add expired status from cache (LAPI truth)
         };
       } else {
         // Not in active cache = Expired or Deleted
@@ -991,7 +997,7 @@ app.delete('/api/decisions/:id', ensureAuth, async (req, res) => {
 });
 
 // Serve static files from the "frontend/dist" directory.
-app.use(express.static('frontend/dist'));
+app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
 // Catch-all handler for any request that doesn't match an API route
 app.get('*', (req, res) => {
