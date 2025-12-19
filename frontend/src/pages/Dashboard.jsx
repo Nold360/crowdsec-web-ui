@@ -73,6 +73,7 @@ export function Dashboard() {
         }
         return {
             dateRange: null,
+            dateRangeSticky: false,
             country: null,
             scenario: null,
             as: null,
@@ -356,6 +357,7 @@ export function Dashboard() {
     const clearFilters = () => {
         setFilters({
             dateRange: null,
+            dateRangeSticky: false,
             country: null,
             scenario: null,
             as: null,
@@ -363,7 +365,11 @@ export function Dashboard() {
         });
     };
 
-    const hasActiveFilters = Object.values(filters).some(v => v !== null);
+    const hasActiveFilters = filters.dateRange !== null ||
+        filters.country !== null ||
+        filters.scenario !== null ||
+        filters.as !== null ||
+        filters.ip !== null;
 
     if (loading) {
         return <div className="text-center p-8 text-gray-500">Loading dashboard...</div>;
@@ -520,8 +526,13 @@ export function Dashboard() {
                                     decisionsData={statistics.decisionsHistory}
                                     unfilteredAlertsData={statistics.unfilteredAlertsHistory}
                                     unfilteredDecisionsData={statistics.unfilteredDecisionsHistory}
-                                    onDateRangeSelect={(dateRange) => setFilters(prev => ({ ...prev, dateRange }))}
+                                    onDateRangeSelect={(dateRange, isAtEnd) => setFilters(prev => ({
+                                        ...prev,
+                                        dateRange,
+                                        dateRangeSticky: isAtEnd && dateRange !== null
+                                    }))}
                                     selectedDateRange={filters.dateRange}
+                                    isSticky={filters.dateRangeSticky}
                                     granularity={granularity}
                                     setGranularity={handleGranularityChange}
                                 />
