@@ -330,7 +330,10 @@ async function initializeCache() {
                 duration: decision.duration || "N/A",
                 expiration: decision.stop_at || alert.stop_at,
                 alert_id: alert.id,
-                message: alert.message
+                message: alert.message,
+                events: alert.events,
+                machine_alias: alert.machine_alias,
+                machine_id: alert.machine_id
               }
             };
             cache.decisions.set(String(decision.id), decisionData);
@@ -407,7 +410,10 @@ async function updateCacheDelta() {
                 duration: decision.duration || "N/A",
                 expiration: decision.stop_at || alert.stop_at,
                 alert_id: alert.id,
-                message: alert.message
+                message: alert.message,
+                events: alert.events,
+                machine_alias: alert.machine_alias,
+                machine_id: alert.machine_id
               }
             };
             cache.decisions.set(String(decision.id), decisionData);
@@ -911,6 +917,13 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
     if (includeExpired) {
       // Convert decisionsForStats to full decision object format
       decisions = Array.from(cache.decisionsForStats.values()).map(d => {
+        // OPTIMIZATION: Check if we have fresh data in the active decisions cache
+        // This ensures that active decisions returned in this list have up-to-date durations
+        const activeDecision = cache.decisions.get(String(d.id));
+        if (activeDecision) {
+          return activeDecision;
+        }
+
         // Find matching alert to get full details
         const alert = Array.from(cache.alerts.values()).find(a =>
           a.decisions && a.decisions.some(dec => dec.id === d.id)
@@ -935,7 +948,10 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
             duration: alert.decisions.find(dec => dec.id === d.id)?.duration || "N/A",
             expiration: d.stop_at,
             alert_id: alert.id,
-            message: alert.message
+            message: alert.message,
+            events: alert.events,
+            machine_alias: alert.machine_alias,
+            machine_id: alert.machine_id
           } : {}
         };
       });
