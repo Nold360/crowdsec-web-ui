@@ -47,7 +47,7 @@ Detailed modal view showing attacker IP, AS information, location with map, and 
 </a>
 
 ### Decisions Management
-View and manage active bans/decisions.
+View and manage active bans/decisions. Supports filtering by status (active/expired) and hiding duplicate decisions.
 
 <a href="screenshots/decisions.png">
   <img src="screenshots/decisions.png" alt="Decisions" width="50%">
@@ -74,7 +74,8 @@ Automatically detects new container images on GitHub Container Registry (GHCR). 
 ## Architecture
 
 -   **Frontend**: React (Vite) + Tailwind CSS. Located in `frontend/`.
--   **Backend**: Node.js (Express). Acts as an intelligent caching layer for CrowdSec Local API (LAPI) with delta updates.
+-   **Backend**: Node.js (Express). Acts as an intelligent caching layer for CrowdSec Local API (LAPI) with delta updates and optimized chunked historical data sync.
+-   **Database**: SQLite (better-sqlite3). Persists alerts and decisions locally in `/app/data/crowdsec.db` to reduce memory usage and support historical data.
 -   **Security**: The application runs as a non-root user (`node`) inside the container and communicates with CrowdSec via HTTP/LAPI. It uses **Machine Authentication** (User/Password) to obtain a JWT for full access (read/write).
 
 ## Prerequisites
@@ -111,7 +112,7 @@ Automatically detects new container images on GitHub Container Registry (GHCR). 
       -e CROWDSEC_PASSWORD=<your-secure-password> \
       -e CROWDSEC_LOOKBACK_PERIOD=5d \
       -e CROWDSEC_REFRESH_INTERVAL=0 \
-      -v $(pwd)/config:/app/config \
+      -v $(pwd)/data:/app/data \
       --network your_crowdsec_network \
       crowdsec-web-ui
     ```
@@ -143,24 +144,22 @@ services:
       # Forces a complete data reload when active, skipped when idle.
       - CROWDSEC_FULL_REFRESH_INTERVAL=5m
     volumes:
-      - ./config:/app/config
+      - ./data:/app/data
     restart: unless-stopped
 ```
 
 ## Persistence
 
-To persist configuration changes (like the refresh interval) across container restarts, you need to mount the `/app/config` directory.
-
-The application stores its runtime configuration in `/app/config/config.json`.
+To persist alert history, decisions cache, and configuration across container restarts, mount the `/app/data` directory. All data is stored in a single SQLite database.
 
 **Docker Run:**
-Add `-v $(pwd)/config:/app/config` to your command.
+Add `-v $(pwd)/data:/app/data` to your command.
 
 **Docker Compose:**
 Add the volume mapping:
 ```yaml
 volumes:
-  - ./config:/app/config
+  - ./data:/app/data
 ```
 
 ## Local Development
@@ -203,6 +202,7 @@ The backend exposes the following endpoints (proxying to CrowdSec LAPI):
 -   `GET /api/decisions`: List decisions (active by default). Supports `?include_expired=true`.
 -   `POST /api/decisions`: Add a new decision (Body: `{ ip, duration, reason, type }`).
 -   `DELETE /api/decisions/:id`: Delete a decision by ID.
+-   `GET /api/stats/alerts`: Minimal alert data for Dashboard statistics.
 -   `GET /api/stats/decisions`: List all decisions (including expired) for statistics.
 -   `GET /api/config`: Get current configuration and LAPI connection status.
 -   `PUT /api/config/refresh-interval`: Update the background refresh interval.

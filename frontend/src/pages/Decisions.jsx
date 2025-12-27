@@ -6,8 +6,7 @@ import { Badge } from "../components/ui/Badge";
 import { Modal } from "../components/ui/Modal";
 import { ScenarioName } from "../components/ScenarioName";
 import { TimeDisplay } from "../components/TimeDisplay";
-import { getHubUrl, getCountryName } from "../lib/utils";
-import { getAlertTarget } from "../lib/stats";
+import { getCountryName } from "../lib/utils";
 import { Trash2, Gavel, X, ExternalLink, Shield, Search } from "lucide-react";
 import "flag-icons/css/flag-icons.min.css";
 
@@ -19,6 +18,7 @@ export function Decisions() {
     const [filter, setFilter] = useState("");
     const [decisionToDelete, setDecisionToDelete] = useState(null);
     const [newDecision, setNewDecision] = useState({ ip: "", duration: "4h", reason: "manual" });
+    const [errorMessage, setErrorMessage] = useState(null);
     const [searchParams, setSearchParams] = useSearchParams();
     const alertIdFilter = searchParams.get("alert_id");
     const includeExpiredParam = searchParams.get("include_expired") === "true";
@@ -31,6 +31,8 @@ export function Decisions() {
     const targetFilter = searchParams.get("target");
     const dateStartFilter = searchParams.get("dateStart");
     const dateEndFilter = searchParams.get("dateEnd");
+    // Default: hide duplicates unless explicitly set to false OR viewing a specific alert's decisions
+    const showDuplicates = searchParams.get("hide_duplicates") === "false" || !!alertIdFilter;
 
     const [displayedCount, setDisplayedCount] = useState(50);
 
@@ -84,14 +86,17 @@ export function Decisions() {
 
     const handleAddDecision = async (e) => {
         e.preventDefault();
+        const decisionData = { ...newDecision };
+        setShowAddModal(false);
+        setNewDecision({ ip: "", duration: "4h", reason: "manual" });
+        setErrorMessage(null);
         try {
-            await addDecision(newDecision);
-            setShowAddModal(false);
-            setNewDecision({ ip: "", duration: "4h", reason: "manual" });
-            loadDecisions();
+            await addDecision(decisionData);
+            await loadDecisions();
+            setDisplayedCount(50); // Reset to show new decision at top
         } catch (error) {
             console.error("Failed to add decision", error);
-            alert("Failed to add decision");
+            setErrorMessage("Failed to add decision. Please try again.");
         }
     };
 
@@ -103,13 +108,16 @@ export function Decisions() {
 
     const confirmDelete = async () => {
         if (!decisionToDelete) return;
+        const idToDelete = decisionToDelete;
+        setDecisionToDelete(null);
+        setErrorMessage(null);
         try {
-            await deleteDecision(decisionToDelete);
-            setDecisionToDelete(null);
-            loadDecisions();
+            await deleteDecision(idToDelete);
+            await loadDecisions();
+            setDisplayedCount(50); // Reset scroll position
         } catch (error) {
             console.error("Failed to delete decision", error);
-            alert("Failed to delete decision");
+            setErrorMessage("Failed to delete decision. Please try again.");
         }
     };
 
@@ -137,8 +145,8 @@ export function Decisions() {
     };
 
     const filteredDecisions = decisions.filter(decision => {
-        // Debug logging
-        // console.log("Filtering decision:", decision.value, "Target Filter:", targetFilter);
+        // 0. Duplicate Filter (applied first, default: hide duplicates)
+        if (!showDuplicates && decision.is_duplicate) return false;
 
         // 1. Alert ID Filter
         if (alertIdFilter && String(decision.detail.alert_id) !== alertIdFilter) return false;
@@ -151,10 +159,10 @@ export function Decisions() {
         if (ipFilter && decision.value !== ipFilter) return false;
         if (targetFilter) {
             const decisionTarget = (decision.value || "").toLowerCase();
-            const alertTarget = (getAlertTarget(decision.detail) || "").toLowerCase();
+            const targetFromDetail = (decision.detail.target || "").toLowerCase();
             const filterValue = targetFilter.toLowerCase();
 
-            if (!decisionTarget.includes(filterValue) && !alertTarget.includes(filterValue)) {
+            if (!decisionTarget.includes(filterValue) && !targetFromDetail.includes(filterValue)) {
                 return false;
             }
         }
@@ -213,7 +221,8 @@ export function Decisions() {
             <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
                     <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Decisions</h2>
-                    {(filteredDecisions.length !== decisions.length) && (
+                    {/* Only show count when non-default filters are applied */}
+                    {(alertIdFilter || countryFilter || scenarioFilter || asFilter || ipFilter || targetFilter || dateStartFilter || dateEndFilter || includeExpiredParam || showDuplicates) && filteredDecisions.length !== decisions.length && (
                         <div className="text-sm text-gray-500">
                             Showing {filteredDecisions.length} of {decisions.length} decisions
                         </div>
@@ -231,12 +240,28 @@ export function Decisions() {
                 </div>
             </div>
 
+            {/* Error Message */}
+            {errorMessage && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
+                        <X size={16} className="flex-shrink-0" />
+                        <span className="text-sm">{errorMessage}</span>
+                    </div>
+                    <button
+                        onClick={() => setErrorMessage(null)}
+                        className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
+
             {/* Show active filters */}
             {(includeExpiredParam || !includeExpiredParam || alertIdFilter || countryFilter || scenarioFilter || asFilter || ipFilter || targetFilter || dateStartFilter || dateEndFilter) && (
                 <div className="flex flex-wrap gap-2">
                     {!includeExpiredParam && (
                         <Badge variant="secondary" className="flex items-center gap-1">
-                            <span className="font-semibold uppercase">STATUS:</span> ACTIVE
+                            <span className="font-semibold">Hide:</span> Inactive
                             <button
                                 onClick={toggleExpired}
                                 className="ml-1 hover:text-red-500"
@@ -245,9 +270,24 @@ export function Decisions() {
                             </button>
                         </Badge>
                     )}
+                    {!showDuplicates && (
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                            <span className="font-semibold">Hide:</span> Duplicates
+                            <button
+                                onClick={() => {
+                                    const newParams = new URLSearchParams(searchParams);
+                                    newParams.set('hide_duplicates', 'false');
+                                    setSearchParams(newParams);
+                                }}
+                                className="ml-1 hover:text-red-500"
+                            >
+                                &times;
+                            </button>
+                        </Badge>
+                    )}
                     {alertIdFilter && (
                         <Badge variant="secondary" className="flex items-center gap-1">
-                            <span className="font-semibold uppercase">ALERT:</span> #{alertIdFilter}
+                            <span className="font-semibold">Alert:</span> #{alertIdFilter}
                             <button
                                 onClick={() => removeParam("alert_id")}
                                 className="ml-1 hover:text-red-500"
@@ -259,7 +299,7 @@ export function Decisions() {
                     {/* Iterate over other filters to cleaner code, or keep explicit for now to match exactly what we have but styled better */}
                     {searchParams.get("country") && (
                         <Badge variant="secondary" className="flex items-center gap-1">
-                            <span className="font-semibold uppercase">COUNTRY:</span> {countryFilter}
+                            <span className="font-semibold">Country:</span> {countryFilter}
                             <button
                                 onClick={() => removeParam("country")}
                                 className="ml-1 hover:text-red-500"
@@ -270,7 +310,7 @@ export function Decisions() {
                     )}
                     {searchParams.get("scenario") && (
                         <Badge variant="secondary" className="flex items-center gap-1 max-w-[300px] truncate" title={scenarioFilter}>
-                            <span className="font-semibold uppercase">SCENARIO:</span> {scenarioFilter}
+                            <span className="font-semibold">Scenario:</span> {scenarioFilter}
                             <button
                                 onClick={() => removeParam("scenario")}
                                 className="ml-1 hover:text-red-500"
@@ -281,7 +321,7 @@ export function Decisions() {
                     )}
                     {searchParams.get("as") && (
                         <Badge variant="secondary" className="flex items-center gap-1 max-w-[300px] truncate" title={asFilter}>
-                            <span className="font-semibold uppercase">AS:</span> {asFilter}
+                            <span className="font-semibold">AS:</span> {asFilter}
                             <button
                                 onClick={() => removeParam("as")}
                                 className="ml-1 hover:text-red-500"
@@ -292,7 +332,7 @@ export function Decisions() {
                     )}
                     {searchParams.get("ip") && (
                         <Badge variant="secondary" className="flex items-center gap-1">
-                            <span className="font-semibold uppercase">IP:</span> {ipFilter}
+                            <span className="font-semibold">IP:</span> {ipFilter}
                             <button
                                 onClick={() => removeParam("ip")}
                                 className="ml-1 hover:text-red-500"
@@ -303,7 +343,7 @@ export function Decisions() {
                     )}
                     {targetFilter && (
                         <Badge variant="secondary" className="flex items-center gap-1">
-                            <span className="font-semibold uppercase">TARGET:</span> {targetFilter}
+                            <span className="font-semibold">Target:</span> {targetFilter}
                             <button
                                 onClick={() => removeParam("target")}
                                 className="ml-1 hover:text-red-500"
@@ -314,7 +354,7 @@ export function Decisions() {
                     )}
                     {dateStartFilter && (
                         <Badge variant="secondary" className="flex items-center gap-1">
-                            <span className="font-semibold uppercase">DATESTART:</span> {dateStartFilter}
+                            <span className="font-semibold">Date Start:</span> {dateStartFilter}
                             <button
                                 onClick={() => removeParam("dateStart")}
                                 className="ml-1 hover:text-red-500"
@@ -325,7 +365,7 @@ export function Decisions() {
                     )}
                     {dateEndFilter && (
                         <Badge variant="secondary" className="flex items-center gap-1">
-                            <span className="font-semibold uppercase">DATEEND:</span> {dateEndFilter}
+                            <span className="font-semibold">Date End:</span> {dateEndFilter}
                             <button
                                 onClick={() => removeParam("dateEnd")}
                                 className="ml-1 hover:text-red-500"
@@ -335,8 +375,8 @@ export function Decisions() {
                         </Badge>
                     )}
 
-                    {/* Show Reset button if we have any active filters OR if we are showing expired (non-default state) */}
-                    {(alertIdFilter || countryFilter || scenarioFilter || asFilter || ipFilter || targetFilter || dateStartFilter || dateEndFilter || includeExpiredParam) && (
+                    {/* Show Reset button if we have any active filters OR if we are showing expired/duplicates (non-default state) */}
+                    {(alertIdFilter || countryFilter || scenarioFilter || asFilter || ipFilter || targetFilter || dateStartFilter || dateEndFilter || includeExpiredParam || showDuplicates) && (
                         <button
                             onClick={clearFilter}
                             className="text-xs text-gray-500 hover:text-gray-900 dark:hover:text-gray-300 underline"

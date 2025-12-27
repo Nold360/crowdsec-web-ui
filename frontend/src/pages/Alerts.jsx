@@ -7,7 +7,6 @@ import { Modal } from "../components/ui/Modal";
 import { ScenarioName } from "../components/ScenarioName";
 import { TimeDisplay } from "../components/TimeDisplay";
 import { getHubUrl, getCountryName } from "../lib/utils";
-import { getAlertTarget } from "../lib/stats";
 import { Search, Info, ExternalLink, Shield } from "lucide-react";
 import "flag-icons/css/flag-icons.min.css";
 
@@ -19,6 +18,9 @@ export function Alerts() {
     const [selectedAlert, setSelectedAlert] = useState(null);
     const [displayedCount, setDisplayedCount] = useState(50);
     const [searchParams, setSearchParams] = useSearchParams();
+
+    // Ref to track selected alert ID for auto-refresh (avoids stale closure issues)
+    const selectedAlertIdRef = useRef(null);
 
     // Intersection Observer for infinite scroll
     const observer = useRef();
@@ -42,25 +44,30 @@ export function Alerts() {
             // Check if there's an alert ID in the URL
             const alertIdParam = searchParams.get("id");
             if (alertIdParam) {
-                const existingAlert = alertsData.find(a => String(a.id) === alertIdParam);
-                if (existingAlert) {
-                    setSelectedAlert(existingAlert);
-                } else {
-                    // Fetch the specific alert if not in the list
-                    try {
-                        const alertData = await fetchAlert(alertIdParam);
-                        setSelectedAlert(alertData);
-                    } catch (err) {
-                        console.error("Alert not found", err);
+                // Always fetch full alert data since list now returns slim payloads
+                try {
+                    const alertData = await fetchAlert(alertIdParam);
+                    setSelectedAlert(alertData);
+                } catch (err) {
+                    console.error("Alert not found", err);
+                    // Fallback to slim data from list if fetch fails
+                    const existingAlert = alertsData.find(a => String(a.id) === alertIdParam);
+                    if (existingAlert) {
+                        setSelectedAlert(existingAlert);
                     }
                 }
             } else {
-                // If a modal is open but no ID param (e.g. clicked row), update it with fresh data
-                setSelectedAlert(prev => {
-                    if (!prev) return null;
-                    const updated = alertsData.find(a => a.id === prev.id);
-                    return updated || prev;
-                });
+                // If a modal is open but no ID param (e.g. clicked row), refresh with full data
+                // Use the ref to get current selected alert ID (avoids stale closure)
+                if (selectedAlertIdRef.current) {
+                    try {
+                        const fullAlert = await fetchAlert(selectedAlertIdRef.current);
+                        setSelectedAlert(fullAlert);
+                    } catch (err) {
+                        console.error("Failed to refresh alert details", err);
+                        // Keep showing current data on error
+                    }
+                }
             }
 
             // Check for generic search query param
@@ -82,9 +89,31 @@ export function Alerts() {
         loadAlerts(false);
     }, [loadAlerts]);
 
+
     useEffect(() => {
         if (refreshSignal > 0) loadAlerts(true);
     }, [refreshSignal, loadAlerts]);
+
+    // Keep ref in sync with selectedAlert for auto-refresh
+    useEffect(() => {
+        selectedAlertIdRef.current = selectedAlert?.id || null;
+    }, [selectedAlert]);
+
+    // Handler to fetch full alert data when clicking on a row
+    // Since list view now returns slim alerts, we need to fetch full data for the modal
+    const handleAlertClick = async (alert) => {
+        // Show slim data immediately while loading
+        setSelectedAlert(alert);
+        selectedAlertIdRef.current = alert.id;
+
+        try {
+            const fullAlert = await fetchAlert(alert.id);
+            setSelectedAlert(fullAlert);
+        } catch (err) {
+            console.error("Failed to fetch full alert details", err);
+            // Keep showing slim data as fallback
+        }
+    };
 
     const filteredAlerts = alerts.filter(alert => {
         const search = filter.toLowerCase();
@@ -112,7 +141,7 @@ export function Alerts() {
         if (paramScenario && !scenario.includes(paramScenario)) return false;
         if (paramScenario && !scenario.includes(paramScenario)) return false;
         if (paramAs && !asName.includes(paramAs)) return false;
-        if (paramTarget && !(getAlertTarget(alert) || "").toLowerCase().includes(paramTarget)) return false;
+        if (paramTarget && !(alert.target || "").toLowerCase().includes(paramTarget)) return false;
 
         // Single date filter (legacy support)
         if (paramDate && !(alert.created_at && alert.created_at.startsWith(paramDate))) return false;
@@ -149,7 +178,7 @@ export function Alerts() {
                 ip.includes(search) ||
                 cn.includes(search) ||
                 asName.includes(search) ||
-                (getAlertTarget(alert) || "").toLowerCase().includes(search);
+                (alert.target || "").toLowerCase().includes(search);
         }
 
         return true;
@@ -176,7 +205,7 @@ export function Alerts() {
                         if (!val) return null;
                         return (
                             <Badge key={key} variant="secondary" className="flex items-center gap-1">
-                                <span className="font-semibold uppercase">{key}:</span> {val}
+                                <span className="font-semibold">{key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1')}:</span> {val}
                                 <button
                                     onClick={() => {
                                         const newParams = new URLSearchParams(searchParams);
@@ -237,7 +266,7 @@ export function Alerts() {
                                         <tr
                                             key={alert.id}
                                             ref={isLastElement ? lastAlertElementRef : null}
-                                            onClick={() => setSelectedAlert(alert)}
+                                            onClick={() => handleAlertClick(alert)}
                                             className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
                                         >
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
