@@ -1,8 +1,29 @@
-const express = require('express');
-const axios = require('axios');
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { compress } from 'hono/compress';
+import { serveStatic } from 'hono/bun';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import db from './sqlite.js';
+import {
+  fetchLAPI,
+  login as loginToLAPI,
+  fetchAlerts as fetchAlertsFromLAPI,
+  getAlertById,
+  addDecision,
+  deleteDecision,
+  getLapiStatus,
+  updateLapiStatus,
+  hasCredentials,
+  hasToken,
+  CROWDSEC_URL,
+  CROWDSEC_LOOKBACK_PERIOD
+} from './lapi.js';
+
+// ESM replacement for __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ============================================================================
 // CONSOLE LOGGING OVERRIDES (Add Timestamps)
@@ -21,12 +42,9 @@ console.error = function (...args) {
 };
 
 // Persist refresh interval to database (meta table)
-// Database is loaded after this section, so we defer actual reads
-
-let db; // Forward declaration - assigned after require('./sqlite')
+// Database is initialized via import
 
 function loadPersistedConfig() {
-  // This will be called after db is initialized
   try {
     const intervalMsRow = db.getMeta.get('refresh_interval_ms');
     if (intervalMsRow && intervalMsRow.value !== undefined) {
@@ -56,108 +74,15 @@ function savePersistedConfig(config) {
   }
 }
 
-const app = express();
+const app = new Hono();
+app.use('*', compress());
+app.use('*', cors());
 const port = process.env.PORT || 3000;
 
-// CrowdSec LAPI Configuration
-const CROWDSEC_URL = process.env.CROWDSEC_URL || 'http://crowdsec:8080';
-const CROWDSEC_USER = process.env.CROWDSEC_USER;
-const CROWDSEC_PASSWORD = process.env.CROWDSEC_PASSWORD;
-// Default lookback period (default 7 days / 168h) - used for alerts, decisions and stats defaults
-const CROWDSEC_LOOKBACK_PERIOD = process.env.CROWDSEC_LOOKBACK_PERIOD || '168h';
-
-// Token state
-let requestToken = null;
-
-if (!CROWDSEC_USER || !CROWDSEC_PASSWORD) {
+if (!hasCredentials()) {
   console.warn('WARNING: CROWDSEC_USER and CROWDSEC_PASSWORD must be set for full functionality.');
 }
 
-const apiClient = axios.create({
-  baseURL: CROWDSEC_URL,
-  timeout: 5000,
-  headers: {
-    'User-Agent': 'crowdsec-web-ui/1.0.0'
-  }
-});
-
-// Add interceptor to inject token
-apiClient.interceptors.request.use(config => {
-  if (requestToken && !config.url.includes('/watchers/login')) {
-    config.headers.Authorization = `Bearer ${requestToken}`;
-  }
-  return config;
-});
-
-// Add interceptor to retry requests on 401 (Token Expired)
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-
-    // Check if error is 401 and we haven't already retried
-    if (error.response && error.response.status === 401 && !originalRequest._retry) {
-      // Avoid infinite loops for login requests themselves
-      if (originalRequest.url.includes('/watchers/login')) {
-        return Promise.reject(error);
-      }
-
-      console.log('Detected 401 Unauthorized. Attempting to re-authenticate...');
-      originalRequest._retry = true;
-
-      const success = await loginToLAPI();
-      if (success) {
-        console.log('Re-authentication successful. Retrying original request...');
-        // Update the token in the original request header
-        originalRequest.headers.Authorization = `Bearer ${requestToken}`;
-        // Retry the request
-        return apiClient(originalRequest);
-      } else {
-        console.error('Re-authentication failed.');
-      }
-    }
-
-    return Promise.reject(error);
-  }
-);
-
-
-// Login helper
-const loginToLAPI = async () => {
-  try {
-    console.log(`Attempting login to CrowdSec LAPI at ${CROWDSEC_URL} as ${CROWDSEC_USER}...`);
-    const response = await apiClient.post('/v1/watchers/login', {
-      machine_id: CROWDSEC_USER,
-      password: CROWDSEC_PASSWORD,
-      scenarios: ["manual/web-ui"] // Informative only
-    });
-
-    if (response.data && response.data.code === 200 && response.data.token) {
-      requestToken = response.data.token;
-      console.log('Successfully logged in to CrowdSec LAPI');
-      return true;
-    } else if (response.data && response.data.token) {
-      // Some versions might just return the token object directly or differently
-      requestToken = response.data.token;
-      console.log('Successfully logged in to CrowdSec LAPI');
-      updateLapiStatus(true);
-      return true;
-    } else {
-      console.error('Login response did not contain token:', response.data);
-      updateLapiStatus(false, { message: 'Login response invalid' });
-      return false;
-    }
-  } catch (error) {
-    console.error(`Login failed: ${error.message}`);
-    updateLapiStatus(false, error);
-    if (error.response) {
-      console.error('Response data:', error.response.data);
-    }
-    return false;
-  }
-};
-
-// Login will be called during cache initialization
 
 // Historical Sync Status Tracker
 const syncStatus = {
@@ -187,20 +112,6 @@ const cache = {
 
 // Synchronization lock for cache initialization
 let initializationPromise = null;
-
-// Global LAPI Status Tracker
-const lapiStatus = {
-  isConnected: false,
-  lastCheck: null,
-  lastError: null
-};
-
-// Helper to update LAPI status
-function updateLapiStatus(isConnected, error = null) {
-  lapiStatus.isConnected = isConnected;
-  lapiStatus.lastCheck = new Date().toISOString();
-  lapiStatus.lastError = error ? error.message : null;
-}
 
 // Parse lookback period to milliseconds
 function parseLookbackToMs(lookbackPeriod) {
@@ -248,9 +159,6 @@ function parseRefreshInterval(intervalStr) {
 }
 
 const LOOKBACK_MS = parseLookbackToMs(CROWDSEC_LOOKBACK_PERIOD);
-
-// Initialize SQLite database
-db = require('./sqlite');
 
 // Load persisted config (overrides env var if previously changed by user)
 const persistedConfig = loadPersistedConfig();
@@ -343,17 +251,15 @@ function processAlertForDb(alert) {
     target: target
   };
 
-  // Insert Alert with pre-computed target
+  // Insert Alert with pre-computed target parameters prefixed with $
   const alertData = {
-    id: alert.id,
-    uuid: alert.uuid || String(alert.id),
-    created_at: alert.created_at,
-    scenario: alert.scenario,
-    source_ip: alertSource.ip || alertSource.value,
-    source_cn: alertSource.cn,
-    source_as: alertSource.as_name,
-    message: alert.message || '',
-    raw_data: JSON.stringify(enrichedAlert)
+    $id: alert.id,
+    $uuid: alert.uuid || String(alert.id),
+    $created_at: alert.created_at,
+    $scenario: alert.scenario,
+    $source_ip: alertSource.ip || alertSource.value,
+    $message: alert.message || '',
+    $raw_data: JSON.stringify(enrichedAlert)
   };
 
   try {
@@ -397,16 +303,16 @@ function processAlertForDb(alert) {
     };
 
     const decisionData = {
-      id: String(decision.id),
-      uuid: String(decision.id),
-      alert_id: alert.id,
-      created_at: enrichedDecision.created_at,
-      stop_at: enrichedDecision.stop_at,
-      value: decision.value,
-      type: decision.type,
-      origin: enrichedDecision.origin,
-      scenario: enrichedDecision.scenario,
-      raw_data: JSON.stringify(enrichedDecision)
+      $id: String(decision.id),
+      $uuid: String(decision.id),
+      $alert_id: alert.id,
+      $created_at: enrichedDecision.created_at,
+      $stop_at: enrichedDecision.stop_at,
+      $value: decision.value,
+      $type: decision.type,
+      $origin: enrichedDecision.origin,
+      $scenario: enrichedDecision.scenario,
+      $raw_data: JSON.stringify(enrichedDecision)
     };
 
     try {
@@ -420,36 +326,6 @@ function processAlertForDb(alert) {
   // decision entries. They block traffic directly without creating CrowdSec bans.
 }
 
-// Fetch alerts from LAPI with optional 'since'/'until' parameters and active decision filter
-async function fetchAlertsFromLAPI(since = null, until = null, hasActiveDecision = false) {
-  const sinceParam = since || CROWDSEC_LOOKBACK_PERIOD;
-  const origins = ['cscli', 'crowdsec', 'cscli-import', 'manual', 'appsec', 'lists'];
-  const scopes = ['Ip', 'Range'];
-  const limit = 10000;
-
-  const activeDecisionParam = hasActiveDecision ? '&has_active_decision=true' : '';
-  const untilParam = until ? `&until=${until}` : '';
-
-  const originPromises = origins.map(o =>
-    apiClient.get(`/v1/alerts?since=${sinceParam}${untilParam}&origin=${o}&limit=${limit}${activeDecisionParam}`)
-  );
-  const scopePromises = scopes.map(s =>
-    apiClient.get(`/v1/alerts?since=${sinceParam}${untilParam}&scope=${s}&limit=${limit}${activeDecisionParam}`)
-  );
-
-  const responses = await Promise.all([...originPromises, ...scopePromises]);
-
-  let alertMap = new Map();
-  responses.forEach(r => {
-    if (r.data && Array.isArray(r.data)) {
-      r.data.forEach(alert => {
-        alertMap.set(alert.id, alert);
-      });
-    }
-  });
-
-  return Array.from(alertMap.values());
-}
 
 // Chunked Historical Sync - fetches data in 6-hour chunks with progress updates
 async function syncHistory() {
@@ -488,14 +364,19 @@ async function syncHistory() {
     const progressMessage = `Syncing: ${sinceDuration} → ${untilDuration} ago (${totalAlerts} alerts)`;
     console.log(progressMessage);
     updateSyncStatus({ progress: Math.min(progress, 90), message: progressMessage });
-
     try {
       // Fetch alerts for this chunk (bounded by since and until)
       const alerts = await fetchAlertsFromLAPI(sinceDuration, untilDuration);
 
       if (alerts.length > 0) {
-        const insertTransaction = db.db.transaction((items) => {
-          for (const alert of items) processAlertForDb(alert);
+        const insertTransaction = db.transaction((items) => {
+          for (const alert of items) {
+            try {
+              processAlertForDb(alert);
+            } catch (e) {
+              console.error(`Error processing alert ${alert.id}:`, e);
+            }
+          }
         });
         insertTransaction(alerts);
         totalAlerts += alerts.length;
@@ -520,7 +401,7 @@ async function syncHistory() {
   try {
     const activeDecisionAlerts = await fetchAlertsFromLAPI(null, null, true);
     if (activeDecisionAlerts.length > 0) {
-      const refreshTransaction = db.db.transaction((alerts) => {
+      const refreshTransaction = db.transaction((alerts) => {
         for (const alert of alerts) processAlertForDb(alert);
       });
       refreshTransaction(activeDecisionAlerts);
@@ -619,7 +500,7 @@ async function updateCacheDelta() {
     // Process new alerts
     if (newAlerts.length > 0) {
       console.log(`Delta update: ${newAlerts.length} new alerts`);
-      const insertNewTransaction = db.db.transaction((alerts) => {
+      const insertNewTransaction = db.transaction((alerts) => {
         for (const alert of alerts) {
           processAlertForDb(alert);
         }
@@ -629,7 +510,7 @@ async function updateCacheDelta() {
 
     // Refresh active decisions with updated stop_at from duration
     if (activeDecisionAlerts.length > 0) {
-      const refreshTransaction = db.db.transaction((alerts) => {
+      const refreshTransaction = db.transaction((alerts) => {
         for (const alert of alerts) {
           // Only process the decisions (to update their stop_at)
           const decisions = alert.decisions || [];
@@ -665,9 +546,9 @@ async function updateCacheDelta() {
               // Use UPDATE only - don't insert new entries from enriched alert data
               // This prevents creating phantom decisions from alerts that originally had empty decisions
               db.updateDecision.run({
-                id: String(decision.id),
-                stop_at: stopAt,
-                raw_data: JSON.stringify(enrichedDecision)
+                $id: String(decision.id),
+                $stop_at: stopAt,
+                $raw_data: JSON.stringify(enrichedDecision) // Use stringified data
               });
             } catch (err) {
               // Ignore errors on refresh
@@ -696,10 +577,10 @@ function cleanupOldData() {
 
   try {
     // Remove old alerts
-    const alertResult = db.deleteOldAlerts.run({ cutoff: cutoffDate });
+    const alertResult = db.deleteOldAlerts.run({ $cutoff: cutoffDate }); // Note $ prefix
 
     // Remove old decisions (by stop_at for expired decisions)
-    const decisionResult = db.deleteOldDecisions.run({ cutoff: cutoffDate });
+    const decisionResult = db.deleteOldDecisions.run({ $cutoff: cutoffDate }); // Note $ prefix
 
     if (alertResult.changes > 0 || decisionResult.changes > 0) {
       console.log(`Cleanup: Removed ${alertResult.changes} old alerts, ${decisionResult.changes} old decisions`);
@@ -723,21 +604,6 @@ const FULL_REFRESH_INTERVAL_MS = parseRefreshInterval(process.env.CROWDSEC_FULL_
 // Activity Tracker
 let lastRequestTime = Date.now();
 let lastFullRefreshTime = Date.now();
-
-const activityTracker = (req, res, next) => {
-  const now = Date.now();
-  const wasIdle = (now - lastRequestTime) > IDLE_THRESHOLD_MS;
-  lastRequestTime = now;
-
-  if (wasIdle && isSchedulerRunning) {
-    console.log("System waking up from idle mode. Triggering immediate refresh...");
-    // Cancel pending sleep and run immediately
-    if (schedulerTimeout) clearTimeout(schedulerTimeout);
-    runSchedulerLoop();
-  }
-
-  next();
-};
 
 // Scheduler management functions
 let schedulerTimeout = null;
@@ -852,12 +718,21 @@ if (!UPDATE_CHECK_ENABLED) {
   console.log('Update checking disabled: VITE_COMMIT_HASH not set.');
 }
 
+const DOCKER_IMAGE_REF = (process.env.DOCKER_IMAGE_REF || 'theduffman85/crowdsec-web-ui').toLowerCase();
+
 async function getGhcrToken() {
   try {
-    const response = await axios.get('https://ghcr.io/token?service=ghcr.io&scope=repository:theduffman85/crowdsec-web-ui:pull', {
-      timeout: 5000
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(`https://ghcr.io/token?service=ghcr.io&scope=repository:${DOCKER_IMAGE_REF}:pull`, {
+      signal: controller.signal
     });
-    return response.data.token;
+    clearTimeout(timeoutId);
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    return data.token;
   } catch (error) {
     console.error('Failed to get GHCR token:', error.message);
     return null;
@@ -887,15 +762,17 @@ async function checkForUpdates() {
     if (!token) throw new Error('No GHCR token obtained');
 
     // 1. Get Manifest (or Index)
-    const manifestUrl = `https://ghcr.io/v2/theduffman85/crowdsec-web-ui/manifests/${tag}`;
+    const manifestUrl = `https://ghcr.io/v2/${DOCKER_IMAGE_REF}/manifests/${tag}`;
 
-    let manifestResponse = await axios.get(manifestUrl, {
+    let manifestFetch = await fetch(manifestUrl, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json'
       },
-      timeout: 10000
+      signal: AbortSignal.timeout(10000)
     });
+    if (!manifestFetch.ok) throw new Error(`HTTP ${manifestFetch.status}`);
+    let manifestResponse = { data: await manifestFetch.json(), headers: { 'content-type': manifestFetch.headers.get('content-type') } };
 
     // Handle OCI Index or Manifest List (Multi-arch)
     const mediaType = manifestResponse.headers['content-type'];
@@ -910,14 +787,16 @@ async function checkForUpdates() {
       const resolvedDigest = targetPlatform.digest;
 
       // Fetch the specific manifest
-      const specificManifestUrl = `https://ghcr.io/v2/theduffman85/crowdsec-web-ui/manifests/${resolvedDigest}`;
-      manifestResponse = await axios.get(specificManifestUrl, {
+      const specificManifestUrl = `https://ghcr.io/v2/${DOCKER_IMAGE_REF}/manifests/${resolvedDigest}`;
+      const specificFetch = await fetch(specificManifestUrl, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'
         },
-        timeout: 10000
+        signal: AbortSignal.timeout(10000)
       });
+      if (!specificFetch.ok) throw new Error(`HTTP ${specificFetch.status}`);
+      manifestResponse = { data: await specificFetch.json(), headers: { 'content-type': specificFetch.headers.get('content-type') } };
     }
 
     const configDigest = manifestResponse.data.config?.digest;
@@ -925,12 +804,14 @@ async function checkForUpdates() {
 
     // 2. Get Config Blob to find Labels
     const blobUrl = `https://ghcr.io/v2/theduffman85/crowdsec-web-ui/blobs/${configDigest}`;
-    const blobResponse = await axios.get(blobUrl, {
+    const blobFetch = await fetch(blobUrl, {
       headers: {
         'Authorization': `Bearer ${token}`
       },
-      timeout: 10000
+      signal: AbortSignal.timeout(10000)
     });
+    if (!blobFetch.ok) throw new Error(`HTTP ${blobFetch.status}`);
+    const blobResponse = { data: await blobFetch.json() };
 
     const remoteRevision = blobResponse.data.config?.Labels?.['org.opencontainers.image.revision'];
 
@@ -968,36 +849,51 @@ async function checkForUpdates() {
 // END UPDATE CHECKER
 // ============================================================================
 
-app.use(cors());
-app.use(express.json());
-app.use(activityTracker); // Apply to all routes
+// Activity tracker middleware - Hono style
+app.use('*', activityTrackerMiddleware);
+
+/**
+ * Activity tracker as Hono middleware
+ */
+async function activityTrackerMiddleware(c, next) {
+  const now = Date.now();
+  const wasIdle = (now - lastRequestTime) > IDLE_THRESHOLD_MS;
+  lastRequestTime = now;
+
+  if (wasIdle && isSchedulerRunning) {
+    console.log("System waking up from idle mode. Triggering immediate refresh...");
+    if (schedulerTimeout) clearTimeout(schedulerTimeout);
+    runSchedulerLoop();
+  }
+
+  await next();
+}
 
 /**
  * Middleware to ensure we have a token or try to get one
  */
-const ensureAuth = async (req, res, next) => {
-  if (!requestToken) {
+const ensureAuth = async (c, next) => {
+  if (!hasToken()) {
     const success = await loginToLAPI();
     if (!success) {
-      return res.status(502).json({ error: 'Failed to authenticate with CrowdSec LAPI' });
+      return c.json({ error: 'Failed to authenticate with CrowdSec LAPI' }, 502);
     }
   }
-  next();
+  await next();
 };
 
 /**
- * Helper to handle Axios errors with intelligent retry for 401
+ * Helper to handle API errors with intelligent retry for 401
+ * Returns a Response or null if replay succeeded
  */
-const handleApiError = async (error, res, action, replayCallback) => {
+const handleApiError = async (error, c, action, replayCallback) => {
   if (error.response && error.response.status === 401) {
     console.log(`Received 401 during ${action}, attempting re-login...`);
     const success = await loginToLAPI();
     if (success && replayCallback) {
       try {
-        await replayCallback();
-        return; // Successful replay
+        return await replayCallback();
       } catch (retryError) {
-        // Replay failed, fall through to error handling
         console.error(`Retry failed for ${action}: ${retryError.message}`);
         error = retryError;
       }
@@ -1006,13 +902,13 @@ const handleApiError = async (error, res, action, replayCallback) => {
 
   if (error.response) {
     console.error(`Error ${action}: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
-    res.status(error.response.status).json(error.response.data);
+    return c.json(error.response.data, error.response.status);
   } else if (error.request) {
     console.error(`Error ${action}: No response received`);
-    res.status(502).json({ error: 'Bad Gateway: No response from CrowdSec LAPI' });
+    return c.json({ error: 'Bad Gateway: No response from CrowdSec LAPI' }, 502);
   } else {
     console.error(`Error ${action}: ${error.message}`);
-    res.status(500).json({ error: `Internal Server Error: ${error.message}` });
+    return c.json({ error: `Internal Server Error: ${error.message}` }, 500);
   }
 };
 
@@ -1027,7 +923,7 @@ const hydrateAlertWithDecisions = (alert) => {
   if (alertClone.decisions && Array.isArray(alertClone.decisions)) {
     alertClone.decisions = alertClone.decisions.map(decision => {
       // Look up the decision in SQLite to get the correct stop_at
-      const dbDecision = db.getDecisionById.get({ id: String(decision.id) });
+      const dbDecision = db.getDecisionById.get({ $id: String(decision.id) }); // Note $id for bun:sqlite
 
       const now = new Date();
       let stopAt;
@@ -1111,7 +1007,7 @@ const slimAlert = (alert) => {
  * GET /api/alerts
  * Returns alerts from SQLite database (slim payload for list views)
  */
-app.get('/api/alerts', ensureAuth, async (req, res) => {
+app.get('/api/alerts', ensureAuth, async (c) => {
   try {
     // If in manual mode (REFRESH_INTERVAL_MS === 0), update cache on every request
     if (REFRESH_INTERVAL_MS === 0) {
@@ -1127,7 +1023,7 @@ app.get('/api/alerts', ensureAuth, async (req, res) => {
     const since = new Date(Date.now() - LOOKBACK_MS).toISOString();
 
     // Query alerts from SQLite
-    const rawAlerts = db.getAlerts.all({ since, limit: 10000 });
+    const rawAlerts = db.getAlerts.all({ $since: since, $limit: 10000 }); // Note $ prefix for bun
 
     // Parse raw_data, hydrate with decision status, then slim for list view
     const alerts = rawAlerts.map(row => {
@@ -1138,36 +1034,36 @@ app.get('/api/alerts', ensureAuth, async (req, res) => {
 
     alerts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    res.json(alerts);
+    return c.json(alerts);
   } catch (error) {
     console.error('Error serving alerts from database:', error.message);
-    res.status(500).json({ error: 'Failed to retrieve alerts' });
+    return c.json({ error: 'Failed to retrieve alerts' }, 500);
   }
 });
 
 /**
  * GET /api/alerts/:id
  */
-app.get('/api/alerts/:id', ensureAuth, async (req, res) => {
+app.get('/api/alerts/:id', ensureAuth, async (c) => {
   const doRequest = async () => {
-    const response = await apiClient.get(`/v1/alerts/${req.params.id}`);
+    const alertData = await getAlertById(c.req.param('id'));
 
     // Process response to sync decisions with active cache
-    let alertData = response.data;
+    let processedData = alertData;
 
-    if (Array.isArray(alertData)) {
-      alertData = alertData.map(hydrateAlertWithDecisions);
+    if (Array.isArray(processedData)) {
+      processedData = processedData.map(hydrateAlertWithDecisions);
     } else {
-      alertData = hydrateAlertWithDecisions(alertData);
+      processedData = hydrateAlertWithDecisions(processedData);
     }
 
-    res.json(alertData);
+    return c.json(processedData);
   };
 
   try {
-    await doRequest();
+    return await doRequest();
   } catch (error) {
-    handleApiError(error, res, 'fetching alert details', doRequest);
+    return handleApiError(error, c, 'fetching alert details', doRequest);
   }
 });
 
@@ -1175,7 +1071,7 @@ app.get('/api/alerts/:id', ensureAuth, async (req, res) => {
  * GET /api/decisions
  * Returns decisions from SQLite database (active by default, or all including expired with ?include_expired=true)
  */
-app.get('/api/decisions', ensureAuth, async (req, res) => {
+app.get('/api/decisions', ensureAuth, async (c) => {
   try {
     // If in manual mode, update cache on every request
     if (REFRESH_INTERVAL_MS === 0) {
@@ -1187,14 +1083,14 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
       await initializeCache();
     }
 
-    const includeExpired = req.query.include_expired === 'true';
+    const includeExpired = c.req.query('include_expired') === 'true';
     const now = new Date().toISOString();
     const since = new Date(Date.now() - LOOKBACK_MS).toISOString();
 
     let decisions;
     if (includeExpired) {
       // Get all active decisions PLUS expired ones within lookback period
-      const rawDecisions = db.getDecisionsSince.all({ since, now });
+      const rawDecisions = db.getDecisionsSince.all({ $since: since, $now: now }); // Note $ prefix
       decisions = rawDecisions.map(row => {
         const d = JSON.parse(row.raw_data);
         const isExpired = d.stop_at && new Date(d.stop_at) < new Date();
@@ -1222,7 +1118,7 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
       });
     } else {
       // Get only active decisions (stop_at > now)
-      const rawDecisions = db.getActiveDecisions.all({ now, limit: 10000 });
+      const rawDecisions = db.getActiveDecisions.all({ $now: now, $limit: 10000 }); // Note $ prefix
       decisions = rawDecisions.map(row => {
         const d = JSON.parse(row.raw_data);
         return {
@@ -1291,10 +1187,10 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
 
     decisions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    res.json(decisions);
+    return c.json(decisions);
   } catch (error) {
     console.error('Error serving decisions from database:', error.message);
-    res.status(500).json({ error: 'Failed to retrieve decisions' });
+    return c.json({ error: 'Failed to retrieve decisions' }, 500);
   }
 });
 
@@ -1303,7 +1199,7 @@ app.get('/api/decisions', ensureAuth, async (req, res) => {
  * GET /api/config
  * Returns the public configuration for the frontend
  */
-app.get('/api/config', ensureAuth, (req, res) => {
+app.get('/api/config', ensureAuth, async (c) => {
   // Simple parser to estimate days/hours for display
   // Supports h, d. Default 168h.
   let hours = 168;
@@ -1318,13 +1214,13 @@ app.get('/api/config', ensureAuth, (req, res) => {
   }
 
   // Return current runtime state (not env var)
-  res.json({
+  return c.json({
     lookback_period: CROWDSEC_LOOKBACK_PERIOD,
     lookback_hours: hours,
     lookback_days: Math.max(1, Math.round(hours / 24)),
     refresh_interval: REFRESH_INTERVAL_MS,
     current_interval_name: getIntervalName(REFRESH_INTERVAL_MS),
-    lapi_status: lapiStatus,
+    lapi_status: getLapiStatus(),
     sync_status: syncStatus
   });
 });
@@ -1333,20 +1229,21 @@ app.get('/api/config', ensureAuth, (req, res) => {
  * PUT /api/config/refresh-interval
  * Updates the refresh interval at runtime and restarts the scheduler
  */
-app.put('/api/config/refresh-interval', ensureAuth, (req, res) => {
+app.put('/api/config/refresh-interval', ensureAuth, async (c) => {
   try {
-    const { interval } = req.body;
+    const body = await c.req.json();
+    const { interval } = body;
 
     if (!interval) {
-      return res.status(400).json({ error: 'interval is required' });
+      return c.json({ error: 'interval is required' }, 400);
     }
 
     // Validate interval value
     const validIntervals = ['manual', '0', '5s', '30s', '1m', '5m'];
     if (!validIntervals.includes(interval)) {
-      return res.status(400).json({
+      return c.json({
         error: `Invalid interval. Must be one of: ${validIntervals.join(', ')}`
-      });
+      }, 400);
     }
 
     // Parse and update interval
@@ -1363,7 +1260,7 @@ app.put('/api/config/refresh-interval', ensureAuth, (req, res) => {
 
     console.log(`Refresh interval changed: ${oldIntervalName} → ${interval} (${newIntervalMs}ms)`);
 
-    res.json({
+    return c.json({
       success: true,
       old_interval: oldIntervalName,
       new_interval: interval,
@@ -1372,7 +1269,7 @@ app.put('/api/config/refresh-interval', ensureAuth, (req, res) => {
     });
   } catch (error) {
     console.error('Error updating refresh interval:', error.message);
-    res.status(500).json({ error: 'Failed to update refresh interval' });
+    return c.json({ error: 'Failed to update refresh interval' }, 500);
   }
 });
 
@@ -1381,7 +1278,7 @@ app.put('/api/config/refresh-interval', ensureAuth, (req, res) => {
  * GET /api/stats/alerts
  * Returns minimal alert data for Dashboard statistics (optimized payload)
  */
-app.get('/api/stats/alerts', ensureAuth, async (req, res) => {
+app.get('/api/stats/alerts', ensureAuth, async (c) => {
   try {
     // If in manual mode, update cache on every request
     if (REFRESH_INTERVAL_MS === 0) {
@@ -1397,7 +1294,7 @@ app.get('/api/stats/alerts', ensureAuth, async (req, res) => {
     const since = new Date(Date.now() - LOOKBACK_MS).toISOString();
 
     // Query alerts from SQLite
-    const rawAlerts = db.getAlerts.all({ since, limit: 10000 });
+    const rawAlerts = db.getAlerts.all({ $since: since, $limit: 10000 }); // Note $ prefix
 
     // Parse raw_data and extract only stats-relevant fields with pre-computed target
     const alerts = rawAlerts.map(row => {
@@ -1416,10 +1313,10 @@ app.get('/api/stats/alerts', ensureAuth, async (req, res) => {
 
     alerts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    res.json(alerts);
+    return c.json(alerts);
   } catch (error) {
     console.error('Error serving stats alerts from database:', error.message);
-    res.status(500).json({ error: 'Failed to retrieve alert statistics' });
+    return c.json({ error: 'Failed to retrieve alert statistics' }, 500);
   }
 });
 
@@ -1427,7 +1324,7 @@ app.get('/api/stats/alerts', ensureAuth, async (req, res) => {
  * GET /api/stats/decisions
  * Returns ALL decisions (including expired) for statistics purposes from SQLite database
  */
-app.get('/api/stats/decisions', ensureAuth, async (req, res) => {
+app.get('/api/stats/decisions', ensureAuth, async (c) => {
   try {
     // If in manual mode, update cache on every request
     if (REFRESH_INTERVAL_MS === 0) {
@@ -1442,7 +1339,7 @@ app.get('/api/stats/decisions', ensureAuth, async (req, res) => {
     // Get all decisions within lookback period (plus any still active)
     const since = new Date(Date.now() - LOOKBACK_MS).toISOString();
     const now = new Date().toISOString();
-    const rawDecisions = db.getDecisionsSince.all({ since, now });
+    const rawDecisions = db.getDecisionsSince.all({ $since: since, $now: now }); // Note $ prefix
 
     const decisions = rawDecisions.map(row => {
       const d = JSON.parse(row.raw_data);
@@ -1458,10 +1355,10 @@ app.get('/api/stats/decisions', ensureAuth, async (req, res) => {
 
     decisions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    res.json(decisions);
+    return c.json(decisions);
   } catch (error) {
     console.error('Error serving stats decisions from database:', error.message);
-    res.status(500).json({ error: 'Failed to retrieve decision statistics' });
+    return c.json({ error: 'Failed to retrieve decision statistics' }, 500);
   }
 });
 
@@ -1469,102 +1366,84 @@ app.get('/api/stats/decisions', ensureAuth, async (req, res) => {
  * POST /api/decisions
  * Creates a manual decision via POST /v1/alerts
  */
-app.post('/api/decisions', ensureAuth, async (req, res) => {
+app.post('/api/decisions', ensureAuth, async (c) => {
   const doRequest = async () => {
-    const { ip, duration = "4h", reason = "manual", type = "ban" } = req.body;
+    const body = await c.req.json();
+    const { ip, duration = "4h", reason = "manual", type = "ban" } = body;
 
     if (!ip) {
-      return res.status(400).json({ error: 'IP address is required' });
+      return c.json({ error: 'IP address is required' }, 400);
     }
 
-    const now = new Date().toISOString();
+    const result = await addDecision(ip, type, duration, reason);
 
-    // Construct Alert Object with required fields
-    // Note: The decision's duration field is used by LAPI to calculate the actual stop_at
-    // We don't set stop_at on the alert itself to avoid double-counting
-    const alertPayload = [{
-      scenario: "manual/web-ui",
-      campaign_name: "manual/web-ui",
-      message: `Manual decision from Web UI: ${reason}`,
-      events_count: 1,
-      start_at: now,
-      stop_at: now, // Alert stop_at - LAPI uses decision.duration for actual expiration
-      capacity: 0,
-      leakspeed: "0",
-      simulated: false,
-      events: [],
-      scenario_hash: "",
-      scenario_version: "",
-      source: {
-        scope: "ip",
-        value: ip
-      },
-      decisions: [{
-        type: type,
-        duration: duration,
-        value: ip,
-        origin: "cscli",
-        scenario: "manual/web-ui",
-        scope: "ip"
-      }]
-    }];
-
-    const response = await apiClient.post('/v1/alerts', alertPayload);
-
-    // Immediately refresh cache to include new decision
+    // Immediately refresh cache to include new decision (delta only)
     console.log('Refreshing cache after adding decision...');
-    await initializeCache();
+    await updateCacheDelta();
 
-    res.json({ message: 'Decision added (via Alert)', result: response.data });
+    return c.json({ message: 'Decision added (via Alert)', result });
   };
 
   try {
-    await doRequest();
+    return await doRequest();
   } catch (error) {
-    handleApiError(error, res, 'adding decision', doRequest);
+    return handleApiError(error, c, 'adding decision', doRequest);
   }
 });
 
 /**
  * DELETE /api/decisions/:id
  */
-app.delete('/api/decisions/:id', ensureAuth, async (req, res) => {
+app.delete('/api/decisions/:id', ensureAuth, async (c) => {
   const doRequest = async () => {
-    const response = await apiClient.delete(`/v1/decisions/${req.params.id}`);
+    const result = await deleteDecision(c.req.param('id'));
 
-    // Immediately refresh cache to reflect deleted decision
+    // Immediately refresh cache to reflect deleted decision (delta only)
     console.log('Refreshing cache after deleting decision...');
-    await initializeCache();
+    await updateCacheDelta();
 
-    res.json(response.data || { message: 'Deleted' });
+    return c.json(result || { message: 'Deleted' });
   };
 
   try {
-    await doRequest();
+    return await doRequest();
   } catch (error) {
-    handleApiError(error, res, 'deleting decision', doRequest);
+    return handleApiError(error, c, 'deleting decision', doRequest);
   }
 });
 
 /**
  * GET /api/update-check
  */
-app.get('/api/update-check', ensureAuth, async (req, res) => {
+app.get('/api/update-check', ensureAuth, async (c) => {
   try {
     const status = await checkForUpdates();
-    res.json(status);
+    return c.json(status);
   } catch (error) {
     console.error('Error checking for updates:', error.message);
-    res.status(500).json({ error: 'Update check failed' });
+    return c.json({ error: 'Update check failed' }, 500);
   }
 });
 
 // Serve static files from the "frontend/dist" directory.
-app.use(express.static(path.join(__dirname, 'frontend/dist')));
+app.use('/assets/*', serveStatic({ root: './frontend/dist' }));
 
-// Catch-all handler for any request that doesn't match an API route
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'frontend/dist/index.html'));
+// Also serve individual files from dist root (logo.svg, favicon.ico, etc)
+// This prevents them from being shadowed by the greedy catch-all SPA route below
+const staticFiles = ['/logo.svg', '/favicon.ico', '/robots.txt', '/world-50m.json'];
+staticFiles.forEach(file => {
+  app.use(file, serveStatic({ path: `./frontend/dist${file}` }));
+});
+
+// Catch-all handler: serve index.html for SPA routing
+app.get('*', async (c) => {
+  try {
+    const indexPath = path.join(__dirname, 'frontend/dist/index.html');
+    const html = fs.readFileSync(indexPath, 'utf-8');
+    return c.html(html);
+  } catch (error) {
+    return c.text('Not Found', 404);
+  }
 });
 
 // ============================================================================
@@ -1574,7 +1453,7 @@ app.get('*', (req, res) => {
 // Initialize cache on startup
 (async () => {
   // First, ensure we're logged in
-  if (CROWDSEC_USER && CROWDSEC_PASSWORD) {
+  if (hasCredentials()) {
     console.log('Ensuring authentication before cache initialization...');
     const loginSuccess = await loginToLAPI();
 
@@ -1594,7 +1473,12 @@ app.get('*', (req, res) => {
 })();
 
 // ============================================================================
+// SERVER STARTUP
+// ============================================================================
 
+console.log(`CrowdSec Web UI backend running at http://localhost:${port}`);
 
-
-const server = app.listen(port, '0.0.0.0', () => { console.log(`Server listening on port ${port}`); });
+export default {
+  port,
+  fetch: app.fetch,
+};
