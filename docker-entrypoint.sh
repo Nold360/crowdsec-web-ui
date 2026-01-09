@@ -24,5 +24,9 @@ if [ -d "/app/data" ]; then
     fi
 fi
 
-# Switch to 'bun' user and execute the command
-exec gosu bun "$@"
+# Switch to 'bun' user and execute the command (if root)
+if [ "$UID" == "0" ]; then
+    exec gosu bun "$@"
+else
+    exec bun "$@"
+fi
